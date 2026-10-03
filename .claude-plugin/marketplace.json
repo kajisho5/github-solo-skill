@@ -1,0 +1,14 @@
+{
+  "name": "github-solo-skill",
+  "description": "GitHub settings audit/apply for solo developers",
+  "owner": {
+    "name": "kajisho5"
+  },
+  "plugins": [
+    {
+      "name": "github-solo",
+      "source": "./",
+      "description": "Audit and safely configure a GitHub repo for a solo developer (free features only, never blocks your own PRs)"
+    }
+  ]
+}

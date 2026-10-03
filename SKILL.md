@@ -1,0 +1,107 @@
+---
+name: github-solo
+description: >-
+  Audit and safely configure a GitHub repository for a SOLO developer (free features only, no settings that stop you from merging your own PRs). ALWAYS use this skill when the user asks about GitHub repo settings, repository hardening, "is my repo set up properly", security settings, Dependabot (alerts, security updates, dependabot.yml), CodeQL / code scanning, secret scanning / push protection, SECURITY.md, branch protection / rulesets / "protect main", GitHub Pages, Discussions, topics / description / social preview, release notes config, a fixed "latest release" download link (/releases/latest/download/...), "latest release is 404" / only pre-releases, or when the user says their own PR cannot be merged / "approval required" / "I can't merge my PR" / "branch protection locked me out". Also trigger on Japanese: GitHub設定, リポジトリ設定, セキュリティ設定, 診断, 自動設定, Dependabot, CodeQL, ブランチ保護, ルールセット, Pages公開, Discussions, 最新版リンク, 固定ダウンロードURL, 最新リリース, プレリリース, 自分のPRがマージできない, 承認が必要でマージできない, 1人開発, 個人開発, 個人リポ, リポジトリを整えて. Runs `scripts/solo.py` (audit / apply / links / dependabot); dry-run by default, idempotent, never deletes or overwrites.
+---
+
+# github-solo: GitHub settings for solo developers
+
+One Python file (`scripts/solo.py`, stdlib only, Python 3.9+) that diagnoses a repo and applies only
+what is missing. Its defining rule: **it never adds a setting that makes a one-person repo
+unmergeable** (required approvals, required CODEOWNERS review, `enforce_admins`). It detects existing
+settings like that as ❌ and shows how to remove them, but never removes them itself.
+
+Where is the script? In the directory this SKILL.md was loaded from: `<skill dir>/scripts/solo.py`
+(`~/.claude/skills/github-solo/scripts/solo.py` for a user install, `${CLAUDE_PLUGIN_ROOT}/scripts/solo.py`
+for the plugin). Below, `SOLO` stands for `python3 <skill dir>/scripts/solo.py`.
+
+## Workflow (follow in order)
+
+1. **Identify the repo.** Use the `OWNER/REPO` the user gave. Otherwise the current directory's
+   `git remote origin` is used automatically (omit the argument). If neither exists, ask once.
+   Token: `GH_TOKEN` → `GITHUB_TOKEN` → `gh auth token`. No token → tell the user to run
+   `gh auth login` (or set `GH_TOKEN`); do not ask them to paste a token into chat.
+2. **Audit.** `SOLO audit OWNER/REPO` (add `--json` if you need to parse it). Exit code 1 means there is
+   at least one ❌.
+3. **Summarize in the user's language, ❌ first.** For each ❌ give the one-line reason and the fix
+   commands the audit printed. Then ⚠️ (recommended) grouped by category, then ➖ (not applicable,
+   with its reason, e.g. "private repo needs a paid plan"). Do not recite the whole table.
+4. **Apply.**
+   - Run `SOLO apply OWNER/REPO` (dry run) and show the user the plan.
+   - Default items are invisible to visitors and instantly reversible. Run `SOLO apply OWNER/REPO --yes`
+     after showing the plan (the user's request to "set it up / fix it" is the go-ahead; if they only
+     asked for a diagnosis, ask first).
+   - **Opt-in items are applied only with `--only` and only after asking about each one**, because
+     they change the public face or can break workflows: `pages`, `discussions`, `topics`
+     (`--topics a,b`), `workflow-permissions`. Example:
+     `SOLO apply OWNER/REPO --yes --only pages --pages-path /docs`.
+   - Never try to fix a ❌ yourself with extra API calls. Explain it, show the printed commands, and
+     let the user decide. (Removing an approval rule is the user's call.)
+5. **Generated files** (`.github/dependabot.yml`, `.github/release.yml`, `SECURITY.md`):
+   - In a clone of the repo they are written locally only. Review them, then commit and push.
+   - **Before committing/pushing, check the `release-workflow` row of the audit.** If it is ⚠️, a
+     push to the default branch can start a release workflow (it may publish a real release or
+     tag). Tell the user, and get an explicit OK before you commit or push. Prefer a branch + PR
+     when they want to avoid it.
+   - Not in a clone: `--commit-files` commits through the Contents API straight to the default
+     branch. It refuses when a release workflow may fire unless `--accept-release-risk` is also
+     given; only add that flag after the user agreed.
+   - Existing files are never overwritten. If `dependabot.yml` exists, `apply` prints the missing
+     entries as a proposal; merge them by hand.
+6. **Re-audit** (`SOLO audit OWNER/REPO`) and report what changed: before/after counts and anything
+   that remains (opt-in items the user declined, ➖, license, social preview, which cannot be done via API).
+
+## Other subcommands
+
+- `SOLO links OWNER/REPO`: fixed download URLs `https://github.com/O/R/releases/latest/download/<asset>`.
+  If it says all releases are pre-releases (`/latest` ignores pre-releases → 404) or asset names contain
+  the version (URL would change every release), relay the printed fix and see
+  `references/release-latest.md` (workflow example that uploads a version-less copy).
+- `SOLO dependabot OWNER/REPO`: prints a generated `dependabot.yml` (monthly, one grouped PR per
+  ecosystem) to stdout; nothing is written.
+
+## What the checks are
+
+Full list with API, reason and how to undo each: `references/checks.md`. Summary:
+
+| Category | check id (apply id) | default apply? |
+|---|---|---|
+| Security | `dependabot-alerts`, `dependabot-security-updates` | yes |
+| | `secret-scanning`, `push-protection`, `private-vuln-reporting`, `codeql` (public repos only) | yes |
+| | `dependabot-config` (generates `.github/dependabot.yml`) | yes |
+| | `actions-pinning` (report only) | n/a |
+| | `workflow-permissions` (default GITHUB_TOKEN = read) | **opt-in** |
+| Solo | `solo-blocker` (❌ detect only) | never |
+| | `guardrail` (ruleset `solo-guard`: no delete / force-push of the default branch) | yes |
+| | `delete-branch-on-merge` | yes |
+| | `discussions` | **opt-in** |
+| Distribution | `pages` | **opt-in** |
+| | `releases`, `release-workflow` (report only) | n/a |
+| | `release-notes-config` (`.github/release.yml`) | yes |
+| Metadata | `security-policy` (`SECURITY.md`) | yes |
+| | `topics` | **opt-in** (`--topics`) |
+| | `description`, `license`, `social-preview` (report only; license is the user's decision, social preview has no API) | n/a |
+
+Private repos: GitHub Secret Protection / Code Security are paid, so those rows show ➖ with the reason
+and are skipped. Dependabot alerts / security updates are free on private repos and still apply.
+
+## Rules for you
+
+- Never run `apply --yes` on a repo the user did not name or that you inferred from a stray remote
+  without saying which repo you are about to change.
+- Dry run first, always. `apply` is idempotent: a second run changes nothing.
+- Do not add approval/CODEOWNERS/enforce_admins protections "to be safe". That is exactly the
+  failure this skill exists to prevent.
+- Do not delete or loosen existing protections. The `solo-guard` ruleset can be lifted temporarily:
+  `gh api -X PUT repos/O/R/rulesets/<id> -f enforcement=disabled` (re-enable with `active`).
+- If a request returns 403/404, read `references/troubleshooting.md` (scopes, admin rights, plan
+  limits) instead of retrying blindly. In sandboxes that block admin API paths the audit shows
+  "could not read"; say so instead of guessing the state.
+- Facts about GitHub features change. If the user asks about a limit, price or plan detail that is not
+  in `references/`, check docs.github.com instead of answering from memory.
+
+## References
+
+- `references/checks.md`: every check: why, API, what apply does, how to revert.
+- `references/release-latest.md`: version-less asset names, pre-release handling, workflow examples.
+- `references/troubleshooting.md`: 403 errors, token scopes, private repo paid features.

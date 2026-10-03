@@ -1,0 +1,13 @@
+{
+  "name": "github-solo",
+  "description": "Audit and safely configure a GitHub repo for a solo developer: free features only, never blocks you from merging your own PRs. Dry-run by default.",
+  "version": "0.1.0",
+  "author": {
+    "name": "kajisho5",
+    "url": "https://github.com/kajisho5"
+  },
+  "homepage": "https://github.com/kajisho5/github-solo-skill",
+  "repository": "https://github.com/kajisho5/github-solo-skill",
+  "license": "MIT",
+  "keywords": ["github", "security", "dependabot", "codeql", "solo", "skill"]
+}
