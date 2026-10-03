@@ -1217,6 +1217,8 @@ def execute(ctx, actions, opts):
 
 
 def hint_for(r):
+    if "proxy" in r.message.lower():
+        return "a proxy/sandbox in front of the API blocks this path; run solo.py from your own machine"
     if r.status == 403:
         return "token lacks permission or the feature is not available on this plan (references/troubleshooting.md)"
     if r.status == 404:

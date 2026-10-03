@@ -130,6 +130,8 @@ need `--only <id>`.
 - Detected: a workflow that triggers on a push to the default branch (heuristic text parse of `on: push` incl. `branches`/`branches-ignore`/`tags`
   filters) AND contains `gh release create`, `softprops/action-gh-release`, `release-please`, `actions/create-release`,
   `ncipollo/release-action`, `semantic-release`, `changesets/action` (strong) or only `contents: write` (weak).
+- `release-please` is on the strong list because merging its release PR (a push) publishes a release. Ordinary pushes only update the PR,
+  so for a release-please-only repo the warning is conservative.
 - Consequence: `apply` prints a warning before it writes/commits files, and `--commit-files` is refused unless `--accept-release-risk` is given.
   It is a heuristic: reusable workflows, `workflow_call` chains and conditions in `if:` are not followed.
 
