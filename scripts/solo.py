@@ -16,7 +16,10 @@ delete or overwrite anything that already exists.
 """
 import argparse
 import base64
+import builtins
+import contextlib
 import fnmatch
+import io
 import json
 import os
 import re
@@ -43,12 +46,13 @@ DEFAULT_APPLY = [
     "guardrail", "delete-branch-on-merge", "release-notes-config",
     "security-policy",
 ]
-OPT_IN_APPLY = ["workflow-permissions", "discussions", "pages", "topics"]
+OPT_IN_APPLY = ["workflow-permissions", "discussions", "pages", "topics", "tag-guard"]
 OPT_IN_WHY = {
     "workflow-permissions": "can break existing workflows that rely on a write token",
     "discussions": "changes the public face of the repo",
     "pages": "publishes a public website",
     "topics": "changes the public face of the repo (needs --topics)",
+    "tag-guard": "blocks deleting / force-moving v* tags; may break workflows that re-create tags",
 }
 ALL_APPLY = DEFAULT_APPLY + OPT_IN_APPLY
 
@@ -75,6 +79,127 @@ RELEASE_STRONG = [
 RELEASE_WEAK = [(r"contents:\s*write", "contents: write")]
 
 
+# --------------------------------------------------------------------------
+# Output language (messages are English; --lang ja / SOLO_LANG=ja translates the
+# fixed phrases of the text output. JSON output is never translated.)
+# --------------------------------------------------------------------------
+
+LANG = [os.environ.get("SOLO_LANG") or ("ja" if os.environ.get("LANG", "").startswith("ja") else "en")]
+
+JA_EXACT = {
+    "\n" + SEC: "\nセキュリティ", "\n" + SOLO: "\n1人開発",
+    "\n" + DIST: "\n配布", "\n" + META: "\nメタ情報",
+}
+JA = [
+    ("github-solo audit:", "github-solo 診断:"),
+    ("github-solo apply:", "github-solo 適用:"),
+    ("(dry run)", "(ドライラン)"), ("(executing)", "(実行)"),
+    ("default branch:", "デフォルトブランチ:"), ("(public,", "(公開,"), ("(private,", "(非公開,"),
+    ("Summary: ", "サマリー: "), (" ok, ", " OK, "), (" recommended, ", " 推奨, "),
+    (" action needed, ", " 要対応, "), (" n/a", " 対象外"),
+    ("Action needed items are never changed automatically; follow the fix lines above.",
+     "要対応の項目は自動では変更しません。上に表示した対処コマンドを参照してください。"),
+    ("Next: solo.py apply", "次の手順: solo.py apply"),
+    ("(dry run; add --yes to execute)", "（ドライラン。実行するには --yes）"),
+    ("No changes needed.", "変更は不要です。"),
+    ("Dry run: nothing was changed. Re-run with --yes to execute.",
+     "ドライラン: 何も変更していません。実行するには --yes を付けて再実行してください。"),
+    ("Executing:", "実行中:"),
+    ("Not applied by default (opt-in, use --only <id>):", "デフォルトでは適用しない項目（--only <id> で明示指定）:"),
+    ("is never changed by apply:", "は apply では変更しません:"),
+    ("Run `solo.py audit", "確認するには `solo.py audit"), ("` to verify.", "` を実行してください。"),
+    ("Finished with", "完了（失敗あり）:"), ("failure(s)", "件の失敗"),
+    ("WARNING: pushing to", "警告: 次のブランチへの push でリリースが走る可能性があります:"),
+    ("may start a release workflow:", "（リリースワークフロー）:"),
+    ("Committing the generated files (or pushing your local commit) can create a release.",
+     "生成ファイルのコミット（またはローカルコミットの push）でリリースが作られる可能性があります。"),
+    ("[weak signal]", "[弱いシグナル]"),
+    ("could not read", "読み取れません"), ("see references/troubleshooting.md", "references/troubleshooting.md を参照"),
+    ("cannot read (admin permission needed)", "読み取れません（admin 権限が必要）"),
+    ("status not visible (admin permission needed)", "状態を取得できません（admin 権限が必要）"),
+    ("private repo: needs a paid plan (GitHub Secret Protection / Code Security), skipped",
+     "private リポ: 有料プラン（GitHub Secret Protection / Code Security）が必要なためスキップ"),
+    ("private repo: rulesets need a paid plan, skipped", "private リポ: ruleset は有料プランが必要なためスキップ"),
+    ("no CodeQL-supported language detected", "CodeQL 対応言語が見つかりません"),
+    ("default setup configured", "default setup 設定済み"), ("default setup not configured", "default setup 未設定"),
+    ("advanced setup via", "advanced setup（ワークフロー）:"),
+    ("enabled but paused", "有効（一時停止中）"),
+    ("disabled (opt-in: --only discussions)", "無効（任意: --only discussions）"),
+    ("(opt-in: --only pages)", "（任意: --only pages）"),
+    ("(opt-in: --only topics --topics a,b)", "（任意: --only topics --topics a,b）"),
+    ("(opt-in: --only tag-guard)", "（任意: --only tag-guard）"),
+    ("(opt-in fix; may break workflows that rely on it)", "（任意の修正。write に依存するワークフローが壊れる可能性）"),
+    ("default GITHUB_TOKEN permission is write", "GITHUB_TOKEN のデフォルト権限が write"),
+    ("default GITHUB_TOKEN permission is read", "GITHUB_TOKEN のデフォルト権限が read"),
+    ("all actions pinned to a commit SHA", "すべての action がコミット SHA で固定済み"),
+    ("action reference(s) not pinned to a commit SHA", "件の action 参照が SHA 固定されていません"),
+    ("no approval-required rule on", "承認必須ルールなし:"),
+    ("you cannot merge your own PRs:", "自分の PR をマージできません:"),
+    ("not changed automatically", "自動では変更しません"),
+    ("deleting / force-pushing", "削除 / force push が禁止済み:"),
+    ("can be deleted / force-pushed", "は削除 / force push できます"),
+    ("merged branches are deleted automatically", "マージ済みブランチは自動削除"),
+    ("merged branches are kept", "マージ済みブランチが残る"),
+    ("not set up; would publish", "未設定。公開予定:"),
+    ("no releases yet", "リリースがありません"),
+    ("all pre-releases: /releases/latest returns 404", "すべて Pre-release: /releases/latest は 404 になります"),
+    ("release(s)", "件のリリース"),
+    ("but every asset name contains a version, so a fixed /latest/download/ URL cannot work",
+     "ただしすべてのアセット名にバージョンが入っており、固定の /latest/download/ URL は使えません"),
+    ("will likely create a release", "リリースを作る可能性が高い"), ("may create a release", "リリースを作る可能性あり"),
+    ("a push to", "push:"), ("committing files there can trigger it", "ここへファイルをコミットすると発火しうる"),
+    ("(local only; review and commit it yourself)", "（ローカルのみ。内容を確認してコミットしてください）"),
+    ("committed", "コミット済み:"), ("hint:", "ヒント:"),
+    ("no workflow creates releases on push to", "push でリリースを作るワークフローなし:"),
+    (".github/release.yml missing", ".github/release.yml がありません"),
+    ("SECURITY.md missing", "SECURITY.md がありません"),
+    ("empty (set it in the repo's About box)", "未設定（リポの About 欄で設定）"),
+    ("none (", "なし（"),
+    ("no license (your decision: https://choosealicense.com/ - not generated automatically)",
+     "ライセンスなし（選択はあなたの判断: https://choosealicense.com/ 。自動生成しません）"),
+    ("no custom social preview (cannot be set via API):", "social preview 未設定（API では設定不可）:"),
+    ("custom social preview image set", "social preview 設定済み"),
+    ("missing; detected:", "未作成。検出:"),
+    ("bundled code under", "同梱コード"), ("is not tracked by Dependabot", "は Dependabot の追跡対象外"),
+    ("(proposal only, file is not touched)", "（提案のみ。ファイルは変更しません）"),
+    ("could be deleted / force-moved", "は削除 / 移動できます"),
+    ("(it only reads real manifests outside those dirs)", "（それ以外の場所の実マニフェストのみ対象）"),
+    ("release tags (v*) can be deleted / force-moved", "リリースタグ (v*) を削除 / 移動できます"),
+    ("no index.html: the README is rendered as the top page", "index.html なし: README がトップページとして表示されます"),
+    ("index.html found at the repo root", "ルートに index.html あり"), ("docs/index.html found", "docs/index.html あり"),
+    ("(see: solo.py links)", "（solo.py links 参照）"), ("(see: solo.py links, references/release-latest.md)", "（solo.py links / references/release-latest.md 参照）"),
+    ("tag ruleset active:", "タグ用 ruleset 有効:"), ("no releases yet, no release tags to protect", "リリース未作成のため保護対象のタグなし"),
+    ("misses:", "不足:"), (" covers ", " 対象: "), ("missing; detected:", "未作成。検出:"),
+    ("latest is", "latest は"), ("version-less asset(s)", "件のバージョン無しアセット"),
+    ("disabled", "無効"), ("enabled", "有効"),
+    ("create .github/dependabot.yml", ".github/dependabot.yml を作成"),
+    ("create .github/release.yml", ".github/release.yml を作成"),
+    ("create SECURITY.md", "SECURITY.md を作成"),
+    ("write locally (you commit it)", "ローカルに書き出し（コミットはあなたが行う）"),
+    ("already exists locally - left untouched", "ローカルに既にあるため変更しません"),
+    ("will skip:", "スキップ:"),
+    ("not a clone of this repo: run inside a clone, or pass --commit-files",
+     "このリポの clone ではありません。clone 内で実行するか --commit-files を指定してください"),
+    ("done ", "完了 "), ("FAILED", "失敗"), ("BLOCKED", "ブロック"),
+    ("written", "書き出し"), ("skip ", "スキップ "),
+]
+JA.sort(key=lambda t: -len(t[0]))
+
+
+def tr(text):
+    if LANG[0] != "ja":
+        return text
+    if text in JA_EXACT:
+        return JA_EXACT[text]
+    for en, ja in JA:
+        text = text.replace(en, ja)
+    return text
+
+
+def say(text="", **kw):
+    builtins.print(tr(text), **kw)
+
+
 class SoloError(Exception):
     pass
 
@@ -96,7 +221,7 @@ class Resp(object):
     @property
     def message(self):
         if isinstance(self.data, dict) and self.data.get("message"):
-            return str(self.data["message"])
+            return re.sub(r"[\x00-\x1f\x7f]", " ", str(self.data["message"]))
         return ""
 
     def describe(self):
@@ -218,6 +343,7 @@ class Ctx(object):
         self._cache = {}
         self.state = {}
         self.release_risk = []  # [(workflow path, [indicators], strong)]
+        self.log = []
         self._info = None
         self._tree = None
         self._files = {}
@@ -501,6 +627,56 @@ def detect_ecosystems(paths):
     return ordered, sorted(vendored)
 
 
+def parse_dependabot(text):
+    """-> {ecosystem: set(directory patterns)} from an existing dependabot.yml (line based)."""
+    entries, cur, in_updates, ind = [], None, False, None
+    for raw in text.splitlines():
+        line = _strip_comment(raw)
+        if not line.strip():
+            continue
+        if re.match(r"^updates:\s*$", line):
+            in_updates = True
+            continue
+        if in_updates and re.match(r"^\S", line):
+            in_updates = False
+        if not in_updates:
+            continue
+        m = re.match(r"^(\s*)-\s+\S", line)
+        if m and (ind is None or len(m.group(1)) == ind):
+            ind = len(m.group(1))
+            cur = []
+            entries.append(cur)
+        if cur is not None:
+            cur.append(line)
+    out = {}
+    for e in entries:
+        blk = "\n".join(e)
+        m = re.search(r"package-ecosystem:\s*['\"]?([\w-]+)", blk)
+        if not m:
+            continue
+        dirs = out.setdefault(m.group(1), set())
+        for d in re.findall(r"(?m)^\s*(?:-\s+)?directory:\s*['\"]?([^'\"\s]+)", blk):
+            dirs.add(d)
+        m = re.search(r"(?m)^(\s*)(?:-\s+)?directories:\s*(?:\[(.*)\])?\s*$", blk)
+        if m:
+            if m.group(2) is not None:
+                for x in m.group(2).split(","):
+                    if x.strip():
+                        dirs.add(x.strip().strip("'\""))
+            else:
+                for l in blk[m.end():].splitlines():
+                    mm = re.match(r"^\s*-\s*['\"]?([^'\"\s]+)", l)
+                    if mm:
+                        dirs.add(mm.group(1))
+                    elif l.strip():
+                        break
+    return out
+
+
+def dir_covered(d, patterns):
+    return any(fnmatch.fnmatchcase(d, pat.replace("**", "*")) for pat in patterns)
+
+
 def dependabot_entries(ecos):
     out = []
     for eco, dirs in ecos.items():
@@ -700,13 +876,24 @@ def check_dependabot_config(ctx):
     existing = [p for p in (".github/dependabot.yml", ".github/dependabot.yaml") if p in ctx.paths]
     data = {"ecosystems": ecos, "vendored": vendored}
     if existing:
-        text = ctx.read_file(existing[0]) or ""
-        have = set(re.findall(r"package-ecosystem:\s*['\"]?([\w-]+)", text))
+        have = parse_dependabot(ctx.read_file(existing[0]) or "")
         missing = {e: d for e, d in ecos.items() if e not in have}
-        if missing:
+        missing_dirs = {}
+        for e, dirs in ecos.items():
+            if e in have and e != "github-actions":
+                gap = [d for d in dirs if not dir_covered(d, have[e])]
+                if gap:
+                    missing_dirs[e] = gap
+        if missing or missing_dirs:
             data["missing"] = missing
+            data["missing_dirs"] = missing_dirs
+            parts = []
+            if missing:
+                parts.append(", ".join(missing))
+            for e, gap in missing_dirs.items():
+                parts.append("%s in %s" % (e, ", ".join(gap)))
             return [R(id, SEC, WARN, "%s misses: %s (proposal only, file is not touched)"
-                      % (existing[0], ", ".join(missing)), apply=id, actionable=True,
+                      % (existing[0], "; ".join(parts)), apply=id, actionable=True,
                       details=notes, data=data)]
         return [R(id, SEC, OK, "%s covers %s" % (existing[0], ", ".join(sorted(have)) or "-"),
                   details=notes, data=data)]
@@ -714,6 +901,31 @@ def check_dependabot_config(ctx):
         return [R(id, SEC, NA, "no Dependabot-supported manifest detected", details=notes, data=data)]
     return [R(id, SEC, WARN, "missing; detected: %s" % ", ".join(ecos), apply=id,
               actionable=True, details=notes, data=data)]
+
+
+def detect_release_risk(wfs, branch):
+    """[(workflow path, [indicators], strong)] for workflows a push to `branch` may turn into a release.
+    Follows `uses: ./.github/workflows/x.yml` calls; an `if:` on refs/tags downgrades to weak."""
+    info = {}
+    for path, text in wfs.items():
+        strong, weak = release_indicators(text)
+        if not (strong or weak):
+            continue
+        cond = bool(re.search(r"^\s*(?:-\s*)?if:.*refs/tags/", text, re.M))
+        inds = list(strong or weak)
+        if cond:
+            inds.append("if: refs/tags (conditional)")
+        info[path] = (inds, bool(strong) and not cond)
+    risky = []
+    for path, text in wfs.items():
+        if not push_triggers_branch(text, branch):
+            continue
+        if path in info:
+            risky.append((path, info[path][0], info[path][1]))
+        for ref in re.findall(r"uses:\s*['\"]?\./(\.github/workflows/[^\s'\"@#]+\.ya?ml)", text):
+            if ref in info and ref != path:
+                risky.append((ref, info[ref][0] + ["called from " + path], info[ref][1]))
+    return risky
 
 
 def check_pinning_and_release(ctx):
@@ -734,13 +946,7 @@ def check_pinning_and_release(ctx):
     else:
         pin = R("actions-pinning", SEC, OK, "all actions pinned to a commit SHA")
 
-    risky = []
-    for path, text in wfs.items():
-        if not push_triggers_branch(text, ctx.branch):
-            continue
-        strong, weak = release_indicators(text)
-        if strong or weak:
-            risky.append((path, strong or weak, bool(strong)))
+    risky = detect_release_risk(wfs, ctx.branch)
     ctx.release_risk = risky
     if risky:
         det = ["%s (%s)" % (p, ", ".join(ind)) for p, ind, _ in risky]
@@ -852,6 +1058,26 @@ def check_guardrail(ctx):
         return [R(id, SOLO, WARN, "ruleset solo-guard exists but is not active (enforcement=%s); not touched"
                   % existing[0].get("enforcement"), apply=id)]
     return [R(id, SOLO, WARN, "%s can be deleted / force-pushed" % ctx.branch, apply=id, actionable=True)]
+
+
+def check_tag_guard(ctx):
+    id = "tag-guard"
+    rs = ctx.get(ctx.p("/rulesets"), per_page=100)
+    if rs.status == 403 and ctx.private:
+        return [R(id, SOLO, NA, "private repo: rulesets need a paid plan, skipped", apply=id)]
+    if not rs.ok or not isinstance(rs.data, list):
+        return [unreadable(id, SOLO, rs, apply=id)]
+    rels, _ = fetch_releases(ctx)
+    if not rels:
+        return [R(id, SOLO, NA, "no releases yet, no release tags to protect")]
+    tag_sets = [x for x in rs.data if x.get("target") == "tag"]
+    active = [x for x in tag_sets if x.get("enforcement") == "active"]
+    if active:
+        return [R(id, SOLO, OK, "tag ruleset active: %s" % ", ".join(x.get("name", "?") for x in active))]
+    if any(x.get("name") == "solo-tag-guard" for x in tag_sets):
+        return [R(id, SOLO, WARN, "ruleset solo-tag-guard exists but is not active; not touched", apply=id)]
+    return [R(id, SOLO, WARN, "release tags (v*) can be deleted / force-moved (opt-in: --only tag-guard)",
+              apply=id, actionable=True)]
 
 
 def check_delete_branch(ctx):
@@ -969,7 +1195,7 @@ def check_meta(ctx):
 
 CHECKS = [check_alerts, check_security_updates, check_secret_scanning, check_pvr,
           check_codeql, check_dependabot_config, check_pinning_and_release,
-          check_workflow_permissions, check_solo_blocker, check_guardrail,
+          check_workflow_permissions, check_solo_blocker, check_guardrail, check_tag_guard,
           check_delete_branch, check_discussions, check_pages, check_releases,
           check_release_notes, check_meta]
 
@@ -990,24 +1216,24 @@ def summarize(results):
 
 def print_audit(ctx, results):
     vis = "private" if ctx.private else "public"
-    print("github-solo audit: %s (%s, default branch: %s)" % (ctx.slug, vis, ctx.branch))
+    say("github-solo audit: %s (%s, default branch: %s)" % (ctx.slug, vis, ctx.branch))
     width = max(len(r.id) for r in results)
     for cat in CATEGORIES:
         rows = [r for r in results if r.cat == cat]
         if not rows:
             continue
-        print("\n%s" % cat)
+        say("\n%s" % cat)
         for r in rows:
             tail = ("  -> apply: %s" % r.apply) if r.apply and r.status in (WARN, BAD) and r.actionable else ""
-            print("  %s %-*s  %s%s" % (ICON[r.status], width, r.id, r.msg, tail))
+            say("  %s %-*s  %s%s" % (ICON[r.status], width, r.id, r.msg, tail))
             for d in r.details:
-                print("       %s" % d)
+                say("       %s" % d)
     s = summarize(results)
-    print("\nSummary: %d ok, %d recommended, %d action needed, %d n/a" % (s[OK], s[WARN], s[BAD], s[NA]))
+    say("\nSummary: %d ok, %d recommended, %d action needed, %d n/a" % (s[OK], s[WARN], s[BAD], s[NA]))
     if s[BAD]:
-        print("Action needed items are never changed automatically; follow the fix lines above.")
+        say("Action needed items are never changed automatically; follow the fix lines above.")
     elif any(r.actionable for r in results):
-        print("Next: solo.py apply %s   (dry run; add --yes to execute)" % ctx.slug)
+        say("Next: solo.py apply %s   (dry run; add --yes to execute)" % ctx.slug)
 
 
 # --------------------------------------------------------------------------
@@ -1052,10 +1278,14 @@ def plan_for(ctx, res, opts):
                        o.p("/code-scanning/default-setup"), {"state": "configured"})]
     if id == "dependabot-config":
         ecos = res.data["ecosystems"]
-        if res.data.get("missing"):
-            snippet = dependabot_entries(res.data["missing"])
+        if res.data.get("missing") is not None:
+            parts = []
+            if res.data["missing"]:
+                parts.append(dependabot_entries(res.data["missing"]))
+            for e, gap in sorted(res.data.get("missing_dirs", {}).items()):
+                parts.append("# in your existing '%s' entry, also cover: %s\n" % (e, ", ".join(gap)))
             return [Action(id, "note", "dependabot.yml already exists - add these entries yourself (not modified):\n"
-                           + "\n".join("      " + l for l in snippet.splitlines()))]
+                           + "\n".join("      " + l for l in "".join(parts).splitlines()))]
         return [file_action(o, id, ".github/dependabot.yml", dependabot_yaml(ecos),
                             "create .github/dependabot.yml (%s)" % ", ".join(ecos))]
     if id == "guardrail":
@@ -1066,7 +1296,7 @@ def plan_for(ctx, res, opts):
         def after(resp, state):
             rid = (resp.data or {}).get("id")
             if rid is not None:
-                print("      to lift temporarily: gh api -X PUT repos/%s/rulesets/%s -f enforcement=disabled "
+                say("      to lift temporarily: gh api -X PUT repos/%s/rulesets/%s -f enforcement=disabled "
                       "(and 'active' to restore)" % (ctx.slug, rid))
         return [Action(id, "api", "create ruleset solo-guard: block deleting / force-pushing the default branch "
                        "(no PR requirement)", "POST", o.p("/rulesets"), body, after=after)]
@@ -1099,6 +1329,12 @@ def plan_for(ctx, res, opts):
             acts.append(Action(id, "api", "set homepage to the Pages URL (currently empty)", "PATCH", o.p(),
                                lambda st: {"homepage": st.get("pages_url") or predicted}))
         return acts
+    if id == "tag-guard":
+        body = {"name": "solo-tag-guard", "target": "tag", "enforcement": "active",
+                "conditions": {"ref_name": {"include": ["refs/tags/v*"], "exclude": []}},
+                "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}]}
+        return [Action(id, "api", "create ruleset solo-tag-guard: block deleting / force-moving v* tags", "POST",
+                       o.p("/rulesets"), body)]
     if id == "topics":
         names = validate_topics(opts.topics)
         return [Action(id, "api", "set topics: %s" % ", ".join(names), "PUT", o.p("/topics"), {"names": names})]
@@ -1165,10 +1401,14 @@ def counts_as_change(action, ctx, opts):
 
 
 def print_release_warning(ctx):
-    print("\n  WARNING: pushing to %s may start a release workflow:" % ctx.branch)
+    say("\n  WARNING: pushing to %s may start a release workflow:" % ctx.branch)
     for path, ind, strong in ctx.release_risk:
-        print("    - %s (%s)%s" % (path, ", ".join(ind), "" if strong else " [weak signal]"))
-    print("    Committing the generated files (or pushing your local commit) can create a release.")
+        say("    - %s (%s)%s" % (path, ", ".join(ind), "" if strong else " [weak signal]"))
+    say("    Committing the generated files (or pushing your local commit) can create a release.")
+
+
+def _log(ctx, status, target, detail=""):
+    ctx.log.append({"status": status, "target": target, "detail": detail})
 
 
 def execute(ctx, actions, opts):
@@ -1179,40 +1419,48 @@ def execute(ctx, actions, opts):
         if a.kind == "api":
             body = a.resolved_body(ctx.state)
             r = ctx.api.request(a.method, a.path, body)
+            tgt = "%s %s" % (a.method, a.path)
             if r.ok:
-                print("  done    %s %s" % (a.method, a.path))
+                say("  done    %s" % tgt)
+                _log(ctx, "done", tgt)
                 if a.after:
                     a.after(r, ctx.state)
             else:
                 failures += 1
-                print("  FAILED  %s %s -> %s" % (a.method, a.path, r.describe()))
-                print("          hint: %s" % hint_for(r))
+                say("  FAILED  %s -> %s" % (tgt, r.describe()))
+                say("          hint: %s" % hint_for(r))
+                _log(ctx, "failed", tgt, r.describe())
             continue
         mode, text = file_mode(ctx, a, opts)
         if mode == "exists" or mode == "skip":
-            print("  skip    %s (%s)" % (a.file_path, text))
+            say("  skip    %s (%s)" % (a.file_path, text))
+            _log(ctx, "skipped", a.file_path, text)
         elif mode == "local":
             full = os.path.join(ctx.local_root, a.file_path)
             os.makedirs(os.path.dirname(full) or ".", exist_ok=True)
             with open(full, "x", encoding="utf-8", newline="\n") as f:
                 f.write(a.content)
-            print("  written %s (local only; review and commit it yourself)" % a.file_path)
+            say("  written %s (local only; review and commit it yourself)" % a.file_path)
+            _log(ctx, "written", a.file_path, "local only")
         elif mode == "commit":
             if ctx.release_risk and not opts.accept_release_risk:
                 failures += 1
-                print("  BLOCKED %s: committing to %s may trigger a release workflow; re-run with "
-                      "--accept-release-risk if that is what you want" % (a.file_path, ctx.branch))
+                say("  BLOCKED %s: committing to %s may trigger a release workflow; re-run with "
+                    "--accept-release-risk if that is what you want" % (a.file_path, ctx.branch))
+                _log(ctx, "blocked", a.file_path, "release workflow may fire")
                 continue
             body = {"message": "chore: add %s (github-solo)" % a.file_path,
                     "content": base64.b64encode(a.content.encode("utf-8")).decode("ascii"),
                     "branch": ctx.branch}
             r = ctx.api.request("PUT", ctx.p("/contents/" + urllib.parse.quote(a.file_path)), body)
             if r.ok:
-                print("  done    committed %s to %s" % (a.file_path, ctx.branch))
+                say("  done    committed %s to %s" % (a.file_path, ctx.branch))
+                _log(ctx, "done", "commit " + a.file_path)
             else:
                 failures += 1
-                print("  FAILED  PUT contents/%s -> %s" % (a.file_path, r.describe()))
-                print("          hint: %s" % hint_for(r))
+                say("  FAILED  PUT contents/%s -> %s" % (a.file_path, r.describe()))
+                say("          hint: %s" % hint_for(r))
+                _log(ctx, "failed", "commit " + a.file_path, r.describe())
     return failures
 
 
@@ -1229,6 +1477,16 @@ def hint_for(r):
 
 
 def cmd_apply(args):
+    if getattr(args, "json", False):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code, report = _apply(args)
+        builtins.print(json.dumps(report, indent=2, ensure_ascii=False))
+        return code
+    return _apply(args)[0]
+
+
+def _apply(args):
     owner, repo, local = resolve_target(args.repo)
     token = get_token()
     if not token:
@@ -1240,7 +1498,7 @@ def cmd_apply(args):
     selected = select_results(results, only, skip)
 
     mode = "executing" if args.yes else "dry run"
-    print("github-solo apply: %s (%s)" % (ctx.slug, mode))
+    say("github-solo apply: %s (%s)" % (ctx.slug, mode))
     actions = []
     for res in selected:
         actions.extend(plan_for(ctx, res, args))
@@ -1250,39 +1508,48 @@ def cmd_apply(args):
                 st = [r for r in results if r.apply == oid]
                 why = "already OK / not applicable" if st and not st[0].actionable else "nothing to do"
                 if st:
-                    print("  note: %s - %s (%s)" % (oid, why, st[0].msg))
+                    say("  note: %s - %s (%s)" % (oid, why, st[0].msg))
     if actions:
-        print("")
+        say("")
         for i, a in enumerate(actions, 1):
-            print("  [%d] %s: %s" % (i, a.id, describe(a, ctx, args)))
+            say("  [%d] %s: %s" % (i, a.id, describe(a, ctx, args)))
         if ctx.release_risk and any(a.kind == "file" and file_mode(ctx, a, args)[0] in ("local", "commit")
                                     for a in actions):
             print_release_warning(ctx)
     pending_opt = [r for r in results if r.apply in OPT_IN_APPLY and r.actionable
                    and r.status == WARN and (only is None or r.apply not in only)]
     if pending_opt:
-        print("\nNot applied by default (opt-in, use --only <id>):")
+        say("\nNot applied by default (opt-in, use --only <id>):")
         for r in pending_opt:
-            print("  - %s: %s" % (r.apply, OPT_IN_WHY[r.apply]))
-    for r in results:
-        if r.status == BAD:
-            print("\n%s %s is never changed by apply: %s" % (ICON[BAD], r.id, r.msg))
-            for d in r.details:
-                print("     %s" % d)
+            say("  - %s: %s" % (r.apply, OPT_IN_WHY[r.apply]))
+    blocked = [r for r in results if r.status == BAD]
+    for r in blocked:
+        say("\n%s %s is never changed by apply: %s" % (ICON[BAD], r.id, r.msg))
+        for d in r.details:
+            say("     %s" % d)
     changes = [a for a in actions if counts_as_change(a, ctx, args)]
     if not changes:
-        print("\nNo changes needed.")
-    if not args.yes:
-        if changes:
-            print("\nDry run: nothing was changed. Re-run with --yes to execute.")
-        return 0
-    if not changes:
-        return 0
-    print("\nExecuting:")
-    failures = execute(ctx, actions, args)
-    print("\n%s. Run `solo.py audit %s` to verify." % (
-        "Finished with %d failure(s)" % failures if failures else "Done", ctx.slug))
-    return 1 if failures else 0
+        say("\nNo changes needed.")
+    failures = 0
+    if args.yes and changes:
+        say("\nExecuting:")
+        failures = execute(ctx, actions, args)
+        say("\n%s. Run `solo.py audit %s` to verify." % (
+            "Finished with %d failure(s)" % failures if failures else "Done", ctx.slug))
+    elif changes:
+        say("\nDry run: nothing was changed. Re-run with --yes to execute.")
+    report = {
+        "repo": ctx.slug, "dry_run": not args.yes,
+        "plan": [{"id": a.id, "kind": a.kind, "method": a.method, "path": a.path or a.file_path,
+                  "body": None if callable(a.body) else (a.body if a.kind == "api" else None),
+                  "description": a.desc, "change": counts_as_change(a, ctx, args),
+                  "file_mode": file_mode(ctx, a, args)[0] if a.kind == "file" else None}
+                 for a in actions],
+        "opt_in_available": [r.apply for r in pending_opt],
+        "never_changed": [r.id for r in blocked],
+        "log": ctx.log, "failures": failures,
+    }
+    return (1 if failures else 0), report
 
 
 # --------------------------------------------------------------------------
@@ -1297,17 +1564,101 @@ def make_ctx(args):
     return Ctx(Api(token), owner, repo, local)
 
 
+def _gh_escape(t):
+    return t.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def print_annotations(results):
+    """GitHub Actions workflow commands, so findings show up as annotations in a CI run."""
+    for r in results:
+        if r.status in (WARN, BAD):
+            say("::%s title=github-solo %s::%s" % ("error" if r.status == BAD else "warning", r.id,
+                                                   _gh_escape(r.msg)))
+
+
 def cmd_audit(args):
+    if args.all_repos:
+        if args.repo:
+            raise SoloError("give either OWNER/REPO or --all-repos OWNER, not both")
+        return cmd_audit_all(args)
     ctx = make_ctx(args)
     results = run_checks(ctx)
     s = summarize(results)
     code = 1 if s[BAD] else 0
     if args.json:
-        print(json.dumps({"repo": ctx.slug, "private": ctx.private, "default_branch": ctx.branch,
-                          "results": [r.to_json() for r in results], "summary": s,
-                          "exit_code": code}, indent=2, ensure_ascii=False))
+        builtins.print(json.dumps({"repo": ctx.slug, "private": ctx.private, "default_branch": ctx.branch,
+                                   "results": [r.to_json() for r in results], "summary": s,
+                                   "exit_code": code}, indent=2, ensure_ascii=False))
     else:
         print_audit(ctx, results)
+        if args.github_annotations:
+            print_annotations(results)
+    return code
+
+
+def list_owner_repos(api, owner):
+    me = api.request("GET", "/user")
+    login = me.data.get("login") if me.ok and isinstance(me.data, dict) else None
+    if login and login.lower() == owner.lower():
+        path, params = "/user/repos", {"affiliation": "owner"}
+    else:
+        path, params = "/orgs/%s/repos" % owner, {"type": "all"}
+    repos, page = [], 1
+    while page <= 10:
+        r = api.request("GET", path, params=dict(params, per_page=100, page=page))
+        if r.status == 404 and path.startswith("/orgs/"):
+            path, params, page = "/users/%s/repos" % owner, {"type": "owner"}, 1
+            continue
+        if not r.ok or not isinstance(r.data, list):
+            raise SoloError("cannot list repos of %s: %s" % (owner, r.describe()))
+        repos.extend(r.data)
+        if len(r.data) < 100:
+            break
+        page += 1
+    return repos
+
+
+def cmd_audit_all(args):
+    token = get_token()
+    if not token:
+        raise SoloError("no token: set GH_TOKEN / GITHUB_TOKEN or run `gh auth login`")
+    api = Api(token)
+    owner = args.all_repos
+    rows, skipped = [], []
+    for item in list_owner_repos(api, owner):
+        name = item.get("name")
+        if item.get("archived") or item.get("fork"):
+            skipped.append("%s (%s)" % (name, "archived" if item.get("archived") else "fork"))
+            continue
+        try:
+            ctx = Ctx(api, item.get("owner", {}).get("login", owner), name)
+            res = run_checks(ctx)
+            rows.append({"repo": ctx.slug, "private": ctx.private, "summary": summarize(res),
+                         "bad": [r.id for r in res if r.status == BAD],
+                         "warn": [r.id for r in res if r.status == WARN]})
+        except SoloError as e:
+            rows.append({"repo": "%s/%s" % (owner, name), "error": str(e), "bad": [], "warn": [],
+                         "summary": {OK: 0, WARN: 0, BAD: 0, NA: 0}})
+    code = 1 if any(r["bad"] for r in rows) else 0
+    if args.json:
+        builtins.print(json.dumps({"owner": owner, "repos": rows, "skipped": skipped, "exit_code": code},
+                                  indent=2, ensure_ascii=False))
+        return code
+    say("github-solo audit --all-repos %s (%d repos)" % (owner, len(rows)))
+    width = max([len(r["repo"]) for r in rows] or [0])
+    for r in rows:
+        if "error" in r:
+            say("  %s %-*s  error: %s" % (ICON[WARN], width, r["repo"], r["error"]))
+            continue
+        st = BAD if r["bad"] else (WARN if r["warn"] else OK)
+        sm = r["summary"]
+        extra = ("  action needed: " + ", ".join(r["bad"])) if r["bad"] else ""
+        say("  %s %-*s  %-7s %d ok, %d recommended, %d action needed, %d n/a%s" % (
+            ICON[st], width, r["repo"], "private" if r["private"] else "public",
+            sm[OK], sm[WARN], sm[BAD], sm[NA], extra))
+    if skipped:
+        say("\nSkipped: %s" % ", ".join(skipped))
+    say("\nRun `solo.py audit OWNER/REPO` for the details of one repo.")
     return code
 
 
@@ -1317,35 +1668,36 @@ def cmd_links(args):
     if rels is None:
         raise SoloError("cannot list releases: %s" % r.describe())
     if not rels:
-        print("No releases in %s yet, so there is no download URL. See references/release-latest.md." % ctx.slug)
+        say("No releases in %s yet, so there is no download URL. See references/release-latest.md." % ctx.slug)
         return 1
     stable = [x for x in rels if not x.get("prerelease")]
     if not stable:
-        print("%s has %d release(s) but all are pre-releases." % (ctx.slug, len(rels)))
-        print("/releases/latest ignores pre-releases (it answers 404), so no fixed URL exists yet.")
-        print("Fix: publish one release as a normal release, e.g.")
-        print("  gh release edit %s --prerelease=false --latest -R %s" % (rels[0].get("tag_name"), ctx.slug))
-        print("Then use asset names without a version in them (see references/release-latest.md).")
+        say("%s has %d release(s) but all are pre-releases." % (ctx.slug, len(rels)))
+        say("/releases/latest ignores pre-releases (it answers 404), so no fixed URL exists yet.")
+        say("Fix: publish one release as a normal release, e.g.")
+        say("  gh release edit %s --prerelease=false --latest -R %s" % (rels[0].get("tag_name"), ctx.slug))
+        say("Then use asset names without a version in them (see references/release-latest.md).")
         return 1
     top = stable[0]
     assets = [a.get("name", "") for a in top.get("assets", [])]
-    print("Latest release: %s" % top.get("tag_name"))
-    print("Page: https://github.com/%s/releases/latest" % ctx.slug)
+    say("Latest release: %s" % top.get("tag_name"))
+    say("Page: https://github.com/%s/releases/latest" % ctx.slug)
     if not assets:
-        print("The latest release has no assets, so there is nothing to download directly.")
+        say("The latest release has no assets, so there is nothing to download directly.")
         return 1
     usable, blocked = [], []
     for a in assets:
         (blocked if versioned_asset(a, top.get("tag_name", "")) else usable).append(a)
     for a in usable:
-        print("https://github.com/%s/releases/latest/download/%s" % (ctx.slug, urllib.parse.quote(a)))
+        url = "https://github.com/%s/releases/latest/download/%s" % (ctx.slug, urllib.parse.quote(a))
+        say("- [%s](%s)" % (a, url) if args.markdown else url)
     if blocked:
-        print("\nNot usable as a fixed URL (the asset name contains the version, so the URL changes every release):")
+        say("\nNot usable as a fixed URL (the asset name contains the version, so the URL changes every release):")
         for a in blocked:
-            print("  - %s" % a)
-        print("Fix: also upload a copy with a version-less name in your release workflow, e.g.")
-        print("  cp app-1.2.0-win.zip app-win.zip && gh release upload %s app-win.zip --clobber" % top.get("tag_name"))
-        print("See references/release-latest.md for a workflow example.")
+            say("  - %s" % a)
+        say("Fix: also upload a copy with a version-less name in your release workflow, e.g.")
+        say("  cp app-1.2.0-win.zip app-win.zip && gh release upload %s app-win.zip --clobber" % top.get("tag_name"))
+        say("See references/release-latest.md for a workflow example.")
     return 0 if usable else 1
 
 
@@ -1353,14 +1705,14 @@ def cmd_dependabot(args):
     ctx = make_ctx(args)
     ecos, vendored = detect_ecosystems(ctx.paths)
     if not ecos:
-        print("No Dependabot-supported manifests detected in %s." % ctx.slug, file=sys.stderr)
+        say("No Dependabot-supported manifests detected in %s." % ctx.slug, file=sys.stderr)
         return 1
     sys.stdout.write(dependabot_yaml(ecos))
     if vendored:
-        print("# note: bundled code under %s/ is not tracked" % "/, ".join(vendored), file=sys.stderr)
+        say("# note: bundled code under %s/ is not tracked" % "/, ".join(vendored), file=sys.stderr)
     existing = [p for p in (".github/dependabot.yml", ".github/dependabot.yaml") if p in ctx.paths]
     if existing:
-        print("# note: %s already exists in the repo; merge by hand, do not overwrite" % existing[0],
+        say("# note: %s already exists in the repo; merge by hand, do not overwrite" % existing[0],
               file=sys.stderr)
     return 0
 
@@ -1372,6 +1724,9 @@ def build_parser():
     a = sub.add_parser("audit", help="diagnose the repo")
     a.add_argument("repo", nargs="?", help="OWNER/REPO (default: git remote origin)")
     a.add_argument("--json", action="store_true", help="machine-readable output")
+    a.add_argument("--all-repos", metavar="OWNER", help="audit every non-archived, non-fork repo of OWNER")
+    a.add_argument("--github-annotations", action="store_true",
+                   help="also print ::warning/::error workflow commands (for GitHub Actions)")
     ap = sub.add_parser("apply", help="apply missing settings (dry run unless --yes)")
     ap.add_argument("repo", nargs="?")
     ap.add_argument("--yes", action="store_true", help="execute (default is a dry run)")
@@ -1381,12 +1736,16 @@ def build_parser():
     ap.add_argument("--topics", help="comma-separated topics for --only topics")
     ap.add_argument("--commit-files", action="store_true",
                     help="commit generated files via the Contents API when not in a clone")
+    ap.add_argument("--json", action="store_true", help="machine-readable plan and execution log")
     ap.add_argument("--accept-release-risk", action="store_true",
                     help="allow --commit-files even if a workflow may create a release on push")
     li = sub.add_parser("links", help="print fixed latest-release download URLs")
     li.add_argument("repo", nargs="?")
+    li.add_argument("--markdown", action="store_true", help="print Markdown list items instead of bare URLs")
     d = sub.add_parser("dependabot", help="print a generated dependabot.yml")
     d.add_argument("repo", nargs="?")
+    for sp in (a, ap, li, d):
+        sp.add_argument("--lang", choices=["en", "ja"], help="output language of the text output (default: SOLO_LANG or $LANG)")
     return p
 
 
@@ -1397,11 +1756,13 @@ def main(argv=None):
         except (AttributeError, ValueError):
             pass
     args = build_parser().parse_args(argv)
+    if getattr(args, "lang", None):
+        LANG[0] = args.lang
     try:
         return {"audit": cmd_audit, "apply": cmd_apply, "links": cmd_links,
                 "dependabot": cmd_dependabot}[args.cmd](args)
     except SoloError as e:
-        print("error: %s" % e, file=sys.stderr)
+        say("error: %s" % e, file=sys.stderr)
         return 2
 
 

@@ -64,7 +64,7 @@ class VoiceboothScenario(Base):
             "secret-scanning": "ok", "push-protection": "ok",
             "private-vuln-reporting": "warn", "codeql": "warn",
             "dependabot-config": "warn", "actions-pinning": "ok",
-            "workflow-permissions": "warn", "solo-blocker": "ok", "guardrail": "warn",
+            "workflow-permissions": "warn", "solo-blocker": "ok", "guardrail": "warn", "tag-guard": "warn",
             "delete-branch-on-merge": "warn", "discussions": "warn", "pages": "warn",
             "releases": "warn", "release-workflow": "warn", "release-notes-config": "warn",
             "description": "ok", "topics": "ok", "license": "ok", "security-policy": "ok",
@@ -78,6 +78,47 @@ class VoiceboothScenario(Base):
         self.assertNotIn("npm", st["dependabot-config"]["message"])  # vendored package.json ignored
         self.assertIn("no index.html", st["pages"]["message"])
         self.assertEqual(data["summary"]["bad"], 0)
+
+    def test_tag_guard_is_opt_in(self):
+        rc, out, _ = self.run_solo("apply", self.slug)
+        self.assertNotIn("] tag-guard:", out)
+        self.assertIn("- tag-guard:", out)
+        rc, out, err = self.run_solo("apply", self.slug, "--yes", "--only", "tag-guard")
+        self.assertEqual(rc, 0, out + err)
+        self.assertEqual(self.writes(), [("POST", self.P + "/rulesets", {
+            "name": "solo-tag-guard", "target": "tag", "enforcement": "active",
+            "conditions": {"ref_name": {"include": ["refs/tags/v*"], "exclude": []}},
+            "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}]})])
+        _, _, st = self.audit()
+        self.assertEqual(st["tag-guard"]["status"], "ok")
+
+    def test_apply_json_plan_and_log(self):
+        rc, out, _ = self.run_solo("apply", self.slug, "--json")
+        self.assertEqual(rc, 0)
+        data = json.loads(out)
+        self.assertTrue(data["dry_run"])
+        ids = [a["id"] for a in data["plan"]]
+        self.assertIn("guardrail", ids)
+        self.assertIn("tag-guard", data["opt_in_available"])
+        self.assertEqual(self.writes(), [])
+        rc, out, _ = self.run_solo("apply", self.slug, "--json", "--yes", "--only", "delete-branch-on-merge")
+        data = json.loads(out)
+        self.assertEqual(data["log"][0]["status"], "done")
+        self.assertEqual(data["failures"], 0)
+
+    def test_japanese_output_and_english_json(self):
+        rc, out, _ = self.run_solo("audit", self.slug, "--lang", "ja")
+        self.assertIn("セキュリティ", out)
+        self.assertIn("要対応", out)
+        self.assertIn("リリースを作る可能性が高い", out)
+        rc, out, _ = self.run_solo("audit", self.slug, "--lang", "ja", "--json")
+        self.assertIn('"category": "Security"', out)
+        rc, out, _ = self.run_solo("apply", self.slug, "--lang", "ja")
+        self.assertIn("ドライラン", out)
+
+    def test_github_annotations(self):
+        rc, out, _ = self.run_solo("audit", self.slug, "--github-annotations")
+        self.assertIn("::warning title=github-solo dependabot-alerts::disabled", out)
 
     def test_dry_run_plan_and_no_writes(self):
         rc, out, _ = self.run_solo("apply", self.slug)
@@ -298,7 +339,7 @@ class ConfiguredScenario(Base):
     def test_everything_ok(self):
         rc, data, st = self.audit()
         self.assertEqual(rc, 0)
-        self.assertEqual(data["summary"], {"ok": 22, "warn": 0, "bad": 0, "na": 0}, self.status(st))
+        self.assertEqual(data["summary"], {"ok": 23, "warn": 0, "bad": 0, "na": 0}, self.status(st))
 
     def test_dry_run_reports_no_changes(self):
         rc, out, _ = self.run_solo("apply", self.slug)
@@ -319,6 +360,33 @@ class ConfiguredScenario(Base):
         self.assertIn('package-ecosystem: "cargo"', out)
         self.assertIn("not modified", out)
         self.assertEqual(self.writes(), [])
+
+    def test_links_markdown(self):
+        rc, out, _ = self.run_solo("links", self.slug, "--markdown")
+        self.assertIn("- [tidy-mac.dmg](https://github.com/seventhwell/tidy/releases/latest/download/tidy-mac.dmg)", out)
+
+    def test_directory_gap_in_existing_dependabot_config(self):
+        self.mock.state["tree"].append("svc/requirements.txt")
+        _, _, st = self.audit()
+        self.assertEqual(st["dependabot-config"]["status"], "warn")
+        self.assertIn("pip in /svc", st["dependabot-config"]["message"])
+        rc, out, _ = self.run_solo("apply", self.slug, "--yes")
+        self.assertIn("also cover: /svc", out)
+        self.assertEqual(self.writes(), [])
+
+    def test_all_repos(self):
+        self.mock.state["extra_repos"] = [{"name": "old", "archived": True, "fork": False,
+                                          "owner": {"login": "seventhwell"}}]
+        rc, out, err = self.run_solo("audit", "--all-repos", "seventhwell")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("seventhwell/tidy", out)
+        self.assertIn("Skipped: old (archived)", out)
+        rc, out, _ = self.run_solo("audit", "--all-repos", "seventhwell", "--json")
+        data = json.loads(out)
+        self.assertEqual(data["repos"][0]["summary"]["bad"], 0)
+        self.assertEqual(data["skipped"], ["old (archived)"])
+        rc, _, err = self.run_solo("audit", "a/b", "--all-repos", "x")
+        self.assertEqual(rc, 2)
 
     def test_links(self):
         rc, out, _ = self.run_solo("links", self.slug)
@@ -429,6 +497,36 @@ class Helpers(unittest.TestCase):
         self.assertIn('    directories:\n      - "/"\n      - "/web"\n', y)
         self.assertIn('directory: "/"', y)
         self.assertEqual(y.count('interval: "monthly"'), 2)
+
+    def test_release_risk_follows_reusable_and_conditions(self):
+        reusable = "on:\n  workflow_call:\njobs:\n  r:\n    steps:\n      - run: gh release create v1\n"
+        caller = "on:\n  push:\n    branches: [main]\njobs:\n  c:\n    uses: ./.github/workflows/rel.yml\n"
+        risky = solo.detect_release_risk({".github/workflows/rel.yml": reusable, ".github/workflows/ci.yml": caller}, "main")
+        self.assertEqual(len(risky), 1)
+        self.assertEqual(risky[0][0], ".github/workflows/rel.yml")
+        self.assertIn("called from .github/workflows/ci.yml", risky[0][1])
+        self.assertTrue(risky[0][2])
+        cond = ("on:\n  push:\n    branches: [main]\njobs:\n  r:\n    if: startsWith(github.ref, 'refs/tags/')\n"
+                "    steps:\n      - run: gh release create v1\n")
+        risky = solo.detect_release_risk({".github/workflows/r.yml": cond}, "main")
+        self.assertEqual(len(risky), 1)
+        self.assertFalse(risky[0][2])  # conditional -> weak
+        self.assertEqual(solo.detect_release_risk({".github/workflows/rel.yml": reusable}, "main"), [])
+
+    def test_parse_dependabot(self):
+        text = ('version: 2\nupdates:\n  - directory: "/web"\n    package-ecosystem: "npm"\n'
+                '    schedule:\n      interval: weekly\n'
+                '  - package-ecosystem: pip\n    directories:\n      - "/"\n      - /svc\n'
+                '  - package-ecosystem: cargo\n    directories: ["/a", "/b"]\n')
+        got = solo.parse_dependabot(text)
+        self.assertEqual(got, {"npm": {"/web"}, "pip": {"/", "/svc"}, "cargo": {"/a", "/b"}})
+        self.assertTrue(solo.dir_covered("/web", {"/*"}))
+        self.assertFalse(solo.dir_covered("/web", {"/"}))
+
+    def test_server_message_is_sanitized(self):
+        r = solo.Resp(403, {"message": "bad\x1b[31mred\nline"})
+        self.assertNotIn("\x1b", r.message)
+        self.assertNotIn("\n", r.message)
 
     def test_validate_topics(self):
         self.assertEqual(solo.validate_topics("Audio, live-streaming"), ["audio", "live-streaming"])

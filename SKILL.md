@@ -18,7 +18,8 @@ for the plugin). Below, `SOLO` stands for `python3 <skill dir>/scripts/solo.py`.
 ## Workflow (follow in order)
 
 1. **Identify the repo.** Use the `OWNER/REPO` the user gave. Otherwise the current directory's
-   `git remote origin` is used automatically (omit the argument). If neither exists, ask once.
+   `git remote origin` is used automatically (omit the argument). For "all my repos" use
+   `SOLO audit --all-repos OWNER`. If neither exists, ask once.
    Token: `GH_TOKEN` → `GITHUB_TOKEN` → `gh auth token`. No token → tell the user to run
    `gh auth login` (or set `GH_TOKEN`); do not ask them to paste a token into chat.
 2. **Audit.** `SOLO audit OWNER/REPO` (add `--json` if you need to parse it). Exit code 1 means there is
@@ -33,7 +34,7 @@ for the plugin). Below, `SOLO` stands for `python3 <skill dir>/scripts/solo.py`.
      asked for a diagnosis, ask first).
    - **Opt-in items are applied only with `--only` and only after asking about each one**, because
      they change the public face or can break workflows: `pages`, `discussions`, `topics`
-     (`--topics a,b`), `workflow-permissions`. Example:
+     (`--topics a,b`), `workflow-permissions`, `tag-guard`. Example:
      `SOLO apply OWNER/REPO --yes --only pages --pages-path /docs`.
    - Never try to fix a ❌ yourself with extra API calls. Explain it, show the printed commands, and
      let the user decide. (Removing an approval rule is the user's call.)
@@ -53,6 +54,8 @@ for the plugin). Below, `SOLO` stands for `python3 <skill dir>/scripts/solo.py`.
 
 ## Other subcommands
 
+- `--lang ja` makes the text output Japanese (`--json` stays English); `audit --github-annotations` adds CI annotations;
+  `apply --json` prints the plan and the execution log; `links --markdown` prints ready-to-paste list items.
 - `SOLO links OWNER/REPO`: fixed download URLs `https://github.com/O/R/releases/latest/download/<asset>`.
   If it says all releases are pre-releases (`/latest` ignores pre-releases → 404) or asset names contain
   the version (URL would change every release), relay the printed fix and see
@@ -73,6 +76,7 @@ Full list with API, reason and how to undo each: `references/checks.md`. Summary
 | | `workflow-permissions` (default GITHUB_TOKEN = read) | **opt-in** |
 | Solo | `solo-blocker` (❌ detect only) | never |
 | | `guardrail` (ruleset `solo-guard`: no delete / force-push of the default branch) | yes |
+| | `tag-guard` (ruleset `solo-tag-guard`: no deleting / force-moving `v*` tags) | **opt-in** |
 | | `delete-branch-on-merge` | yes |
 | | `discussions` | **opt-in** |
 | Distribution | `pages` | **opt-in** |

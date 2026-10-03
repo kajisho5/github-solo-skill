@@ -131,6 +131,8 @@ def configured():
     s["codeql"] = {"state": "configured", "languages": ["python"]}
     s["rulesets"] = [{"id": 7, "name": "solo-guard", "enforcement": "active",
                       "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}]}]
+    s["rulesets"].append({"id": 8, "name": "solo-tag-guard", "enforcement": "active", "target": "tag",
+                          "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}]})
     s["pages"] = {"html_url": "https://%s.github.io/tidy/" % ME, "source": {"branch": "main", "path": "/"}}
     s["releases"] = [{"tag_name": "v1.0.0", "prerelease": False, "draft": False,
                       "assets": [{"name": "tidy-windows.zip"}, {"name": "tidy-mac.dmg"}]}]

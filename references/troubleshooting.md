@@ -72,3 +72,10 @@ change the workflow trigger to tags, or re-run with `--accept-release-risk` if y
 ## Windows
 
 Use `python scripts/solo.py …` if `python3` is not on PATH. Output uses UTF-8 (emoji); in a legacy console use Windows Terminal or `chcp 65001`.
+
+## Security notes
+
+- The token is only sent to `https://api.github.com` — or to `SOLO_API_BASE` if you set it. That variable exists for the test mock server; never point it at a host you do not control.
+- The token is never printed. No command runs through a shell; `git` and `gh` are called with argument lists.
+- Server messages are stripped of control characters before they are shown (no terminal escape injection).
+- Local file writes are create-only (`open(..., "x")`), at fixed relative paths inside the clone's top-level directory.

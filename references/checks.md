@@ -57,7 +57,8 @@ need `--only <id>`.
   Dependabot's options reference; the manifest file names for the less common ones are the conventional names (see the note in ROADMAP.md).
 - Bundled libraries under `third_party/`, `vendor/`, `external/`, `deps/`, `node_modules/`… are ignored on purpose (the audit says so):
   Dependabot does not update copied-in source.
-- Existing `.github/dependabot.yml`: never modified. Missing ecosystems are printed as entries to paste (proposal).
+- Existing `.github/dependabot.yml`: never modified. Missing ecosystems, and manifests in directories the existing entry does not cover
+  (`directory` / `directories`, globs such as `/*` understood), are printed as a proposal to paste. `github-actions` is not checked per directory.
 - File handling: written locally when run inside a clone (you commit it); otherwise `--commit-files` commits through
   `PUT /repos/{o}/{r}/contents/{path}`. See the release-on-push warning below.
 - Undo: delete the file.
@@ -104,6 +105,13 @@ need `--only <id>`.
 - If a `solo-guard` ruleset exists but is not active, it is reported and left alone.
 - Private repos on a free plan: rulesets are not available (the API answers 403) → ➖.
 
+### tag-guard (opt-in)
+- Why: moving or deleting a published release tag silently changes what people download.
+- Shown only when the repo has releases (else ➖). ✅ if an active ruleset targets tags.
+- Apply: `POST /repos/{o}/{r}/rulesets` with `{"name":"solo-tag-guard","target":"tag","enforcement":"active","conditions":{"ref_name":{"include":["refs/tags/v*"],"exclude":[]}},"rules":[{"type":"deletion"},{"type":"non_fast_forward"}]}`.
+- Opt-in because a workflow that deletes and re-creates a tag would be blocked. Lift it like `solo-guard` (set `enforcement` to `disabled`).
+- The `refs/tags/v*` pattern form is taken from the ruleset conditions docs but was not run against the live API (see ROADMAP).
+
 ### delete-branch-on-merge (default)
 - Read/Apply: `delete_branch_on_merge` in `GET` / `PATCH /repos/{o}/{r}`. Undo: set `false`.
 
@@ -133,7 +141,8 @@ need `--only <id>`.
 - `release-please` is on the strong list because merging its release PR (a push) publishes a release. Ordinary pushes only update the PR,
   so for a release-please-only repo the warning is conservative.
 - Consequence: `apply` prints a warning before it writes/commits files, and `--commit-files` is refused unless `--accept-release-risk` is given.
-  It is a heuristic: reusable workflows, `workflow_call` chains and conditions in `if:` are not followed.
+  It is a heuristic. Called reusable workflows (`uses: ./.github/workflows/x.yml`) are followed one level; an `if:` mentioning `refs/tags/`
+  downgrades the finding to weak. Other conditions, matrix tricks and cross-repo workflows are not followed.
 
 ### release-notes-config (default)
 - Why: `.github/release.yml` makes "Generate release notes" group PRs by label and drop Dependabot's PRs

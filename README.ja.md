@@ -110,12 +110,14 @@ python3 scripts/solo.py apply OWNER/REPO --yes --only topics --topics audio,stre
 ```
 
 clone の中では `OWNER/REPO` を省略でき、`git remote origin` から推定します。
+`--lang ja`（または `SOLO_LANG=ja`、日本語の `$LANG`）でテキスト出力を日本語にします。`--json` は常に英語です。
 
 | コマンド | 内容 |
 |---|---|
-| `audit [OWNER/REPO] [--json]` | 診断。❌ があれば終了コード 1 |
-| `apply [OWNER/REPO] [--yes] [--only ids] [--skip ids] [--pages-path / \| /docs] [--topics a,b] [--commit-files] [--accept-release-risk]` | ドライランで計画表示、`--yes` で実行 |
-| `links [OWNER/REPO]` | 最新版の固定ダウンロード URL（使えない場合はその理由） |
+| `audit [OWNER/REPO] [--json] [--github-annotations]` | 診断。❌ があれば終了コード 1。`--github-annotations` は CI 用に `::warning` / `::error` も出力 |
+| `audit --all-repos OWNER [--json]` | オーナーの全リポ（アーカイブ・fork 除く）を1行ずつ要約 |
+| `apply [OWNER/REPO] [--yes] [--only ids] [--skip ids] [--pages-path / \| /docs] [--topics a,b] [--commit-files] [--accept-release-risk] [--json]` | ドライランで計画表示、`--yes` で実行。`--json` は計画と実行ログを出力 |
+| `links [OWNER/REPO] [--markdown]` | 最新版の固定ダウンロード URL（`--markdown` で Markdown のリスト形式。使えない場合は理由） |
 | `dependabot [OWNER/REPO]` | `dependabot.yml` を生成して標準出力へ（monthly、エコシステムごとに1 PR へ集約） |
 
 エージェントにはこう頼めます。
@@ -130,8 +132,8 @@ clone の中では `OWNER/REPO` を省略でき、`git remote origin` から推�
 
 | カテゴリ | チェック | `apply` |
 |---|---|---|
-| セキュリティ | Dependabot alerts / security updates、secret scanning、push protection、private vulnerability reporting、CodeQL default setup（public のみ）、`dependabot.yml`（エコシステム自動検出、同梱 `third_party/`・`vendor/` は対象外）、Actions の SHA 固定（報告のみ）、`GITHUB_TOKEN` のデフォルト権限 | デフォルト（トークン権限は opt-in） |
-| 1人開発 | **solo-blocker**（❌ 検出のみ）、`solo-guard` ruleset、マージ後のブランチ自動削除、Discussions | デフォルト（Discussions は opt-in） |
+| セキュリティ | Dependabot alerts / security updates、secret scanning、push protection、private vulnerability reporting、CodeQL default setup（public のみ）、`dependabot.yml`（エコシステム自動検出、同梱 `third_party/`・`vendor/` は対象外）、Actions の SHA 固定（報告のみ）、`GITHUB_TOKEN` のデフォルト権限（既存の `dependabot.yml` はディレクトリ単位でも確認） | デフォルト（トークン権限は opt-in） |
+| 1人開発 | **solo-blocker**（❌ 検出のみ）、`solo-guard` ruleset、`v*` タグ用 `solo-tag-guard` ruleset、マージ後のブランチ自動削除、Discussions | デフォルト（タグ保護・Discussions は opt-in） |
 | 配布 | GitHub Pages（opt-in）、リリース / latest / アセット名（報告）、push でリリースが走るワークフローの警告（報告）、`.github/release.yml` | デフォルト（Pages は opt-in） |
 | メタ情報 | description、topics（opt-in）、license（自動生成しない）、`SECURITY.md`、social preview（API 不可：設定画面の URL を提示） | デフォルト（topics は opt-in） |
 

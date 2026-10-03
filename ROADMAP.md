@@ -5,9 +5,12 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 ## Done (0.1)
 
 - `audit` (text + `--json`, exit 1 on ❌), `apply` (dry run, `--yes`, `--only`, `--skip`), `links`, `dependabot`.
-- 22 checks across Security / Solo development / Distribution / Metadata (see [references/checks.md](references/checks.md)).
+- 23 checks across Security / Solo development / Distribution / Metadata (see [references/checks.md](references/checks.md)).
 - Solo-blocker detection (classic protection and rulesets), `solo-guard` ruleset, release-on-push warning.
 - Mock GitHub API test suite, CI on Python 3.9 and 3.13, release-please.
+- `--lang ja`, `apply --json`, `audit --all-repos`, `audit --github-annotations`, `links --markdown`.
+- Per-directory coverage of an existing `dependabot.yml`; release detection through reusable workflows and `refs/tags` conditions.
+- Opt-in `tag-guard` ruleset for `v*` tags.
 
 ## Next
 
@@ -18,16 +21,12 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 - **Dependabot manifest names.** The ecosystem names come from Dependabot's options reference. The manifest file names
   for the less common ecosystems (`swift`, `pub`, `mix`, `elm`, `helm`, `gitsubmodule`, `pre-commit`, `terraform`, `docker-compose`) are the
   conventional names and are not confirmed from a docs table.
-- **Directory-level coverage of an existing `dependabot.yml`.** Today only missing ecosystems are proposed; a manifest in a new
-  sub-directory of an already-configured ecosystem is not.
-- **Release-workflow detection.** Follow `workflow_call` / reusable workflows and `if:` conditions; today it is a text heuristic.
-- **Localised output** (`--lang ja`). The script prints English; the agent translates the summary.
-- **`apply --json`** for CI dashboards.
+- **Release-workflow detection.** Still a text heuristic; cross-repo reusable workflows and general `if:` conditions are not followed.
+- **Complete Japanese output.** `--lang ja` translates the fixed phrases; a few sentences are still English.
+- **Verify `refs/tags/v*` for the tag ruleset and `GET /rulesets` `target` against the live API.**
 
 ## Maybe
 
-- Tag rulesets (protect `v*` tags from deletion / force-update), opt-in.
-- Org-level checks (shared defaults) for people who own several repos: `audit --all-repos OWNER`.
 - GitHub Enterprise Server base URL handling for GraphQL.
 
 ## Deliberately out of scope

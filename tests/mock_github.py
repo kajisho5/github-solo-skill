@@ -78,6 +78,11 @@ class MockGitHub(object):
         s = self.state
         repo = s["repo"]
         base = "/repos/%s" % repo["full_name"]
+        if path == "/user" and method == "GET":
+            return 200, {"login": repo["owner"]["login"]}
+        if path in ("/user/repos", "/orgs/%s/repos" % repo["owner"]["login"],
+                    "/users/%s/repos" % repo["owner"]["login"]) and method == "GET":
+            return 200, [repo] + list(s.get("extra_repos", []))
         if path == "/graphql":
             return 200, {"data": {"repository": {"usesCustomOpenGraphImage": s["uses_custom_og"]}}}
         if not path.startswith(base):
@@ -149,7 +154,7 @@ class MockGitHub(object):
         if m and method == "GET":
             rules = []
             for rs in s["rulesets"]:
-                if rs["enforcement"] == "active":
+                if rs["enforcement"] == "active" and rs.get("target", "branch") == "branch":
                     for r in rs["rules"]:
                         item = dict(r)
                         item["ruleset_id"] = rs["id"]
@@ -160,8 +165,8 @@ class MockGitHub(object):
             if s.get("free_private"):
                 return 403, {"message": "Upgrade to GitHub Pro or make this repository public to enable this feature."}
             if method == "GET":
-                return 200, [{"id": r["id"], "name": r["name"], "enforcement": r["enforcement"]}
-                             for r in s["rulesets"]]
+                return 200, [{"id": r["id"], "name": r["name"], "enforcement": r["enforcement"],
+                              "target": r.get("target", "branch")} for r in s["rulesets"]]
             if method == "POST":
                 self._next_id += 1
                 rs = dict(body)

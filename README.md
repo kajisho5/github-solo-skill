@@ -109,12 +109,14 @@ python3 scripts/solo.py apply OWNER/REPO --yes --only topics --topics audio,stre
 ```
 
 `OWNER/REPO` may be omitted inside a clone: it is read from `git remote origin`.
+`--lang ja` (or `SOLO_LANG=ja`, or a Japanese `$LANG`) translates the text output; `--json` is always English.
 
 | Command | What it does |
 |---|---|
-| `audit [OWNER/REPO] [--json]` | diagnose; exit 1 if any ❌ |
-| `apply [OWNER/REPO] [--yes] [--only ids] [--skip ids] [--pages-path / \| /docs] [--topics a,b] [--commit-files] [--accept-release-risk]` | dry-run plan; `--yes` executes |
-| `links [OWNER/REPO]` | stable latest-release download URLs, or why they cannot work |
+| `audit [OWNER/REPO] [--json] [--github-annotations]` | diagnose; exit 1 if any ❌. `--github-annotations` also prints `::warning`/`::error` lines for CI |
+| `audit --all-repos OWNER [--json]` | one summary line per non-archived, non-fork repo of an owner |
+| `apply [OWNER/REPO] [--yes] [--only ids] [--skip ids] [--pages-path / \| /docs] [--topics a,b] [--commit-files] [--accept-release-risk] [--json]` | dry-run plan; `--yes` executes; `--json` prints the plan and the execution log |
+| `links [OWNER/REPO] [--markdown]` | stable latest-release download URLs (optionally as Markdown list items), or why they cannot work |
 | `dependabot [OWNER/REPO]` | print a generated `dependabot.yml` (monthly, one grouped PR per ecosystem) |
 
 Talk to your agent instead:
@@ -129,8 +131,8 @@ Details, APIs and how to revert each one: [references/checks.md](references/chec
 
 | Category | Checks | `apply` |
 |---|---|---|
-| Security | Dependabot alerts + security updates, secret scanning, push protection, private vulnerability reporting, CodeQL default setup (public repos), `dependabot.yml` (ecosystems auto-detected, bundled `third_party/`/`vendor/` ignored), Actions SHA pinning (report), default `GITHUB_TOKEN` permission | default (token permission: opt-in) |
-| Solo development | **solo-blocker** (❌ detect only), `solo-guard` ruleset, delete head branch on merge, Discussions | default (Discussions: opt-in) |
+| Security | Dependabot alerts + security updates, secret scanning, push protection, private vulnerability reporting, CodeQL default setup (public repos), `dependabot.yml` (ecosystems auto-detected, bundled `third_party/`/`vendor/` ignored), Actions SHA pinning (report), default `GITHUB_TOKEN` permission (an existing `dependabot.yml` is checked per directory, too) | default (token permission: opt-in) |
+| Solo development | **solo-blocker** (❌ detect only), `solo-guard` ruleset, `solo-tag-guard` ruleset for `v*` tags, delete head branch on merge, Discussions | default (tag guard, Discussions: opt-in) |
 | Distribution | GitHub Pages (opt-in), releases / latest / asset names (report), release-on-push workflow warning (report), `.github/release.yml` | default (Pages: opt-in) |
 | Metadata | description, topics (opt-in), license (never generated), `SECURITY.md`, social preview (no API: link to the setting) | default (topics: opt-in) |
 
