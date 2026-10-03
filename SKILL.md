@@ -97,8 +97,27 @@ and are skipped. Dependabot alerts / security updates are free on private repos 
 - If a request returns 403/404, read `references/troubleshooting.md` (scopes, admin rights, plan
   limits) instead of retrying blindly. In sandboxes that block admin API paths the audit shows
   "could not read"; say so instead of guessing the state.
-- Facts about GitHub features change. If the user asks about a limit, price or plan detail that is not
-  in `references/`, check docs.github.com instead of answering from memory.
+- **When blocked or unsure, read the official page (URL below) and cite it. Never answer from memory.**
+  This covers: any 403/404/422 from an API call, "could not read" rows, plan/price/limit questions, token
+  permissions, and a sandbox/proxy refusing a call (also read the environment's own documentation, e.g. the
+  `read_documentation` tool in Claude Code cloud sessions). Fetch the page (WebFetch / browser), say which
+  URL you used, and tell the user the concrete next step. If the page does not answer it, say "not confirmed".
+
+## Official docs to read (use these URLs)
+
+| Topic | URL |
+|---|---|
+| Repo settings API (alerts, security fixes, private vuln reporting, PATCH repo) | https://docs.github.com/en/rest/repos/repos |
+| Code scanning default setup | https://docs.github.com/en/rest/code-scanning/code-scanning |
+| Rulesets / rules for a branch | https://docs.github.com/en/rest/repos/rules |
+| Classic branch protection | https://docs.github.com/en/rest/branches/branch-protection |
+| Pages API | https://docs.github.com/en/rest/pages/pages |
+| Actions workflow permissions | https://docs.github.com/en/rest/actions/permissions |
+| Releases API (`/releases/latest`) | https://docs.github.com/en/rest/releases/releases |
+| Token permissions per endpoint | https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens |
+| Dependabot options / ecosystems | https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference |
+| Auto-generated release notes (`release.yml`) | https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes |
+| Plans and which features are free | https://docs.github.com/en/get-started/learning-about-github/githubs-plans |
 
 ## References
 
