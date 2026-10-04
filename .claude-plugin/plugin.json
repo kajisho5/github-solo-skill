@@ -1,7 +1,7 @@
 {
   "name": "github-solo",
   "description": "Audit and safely configure a GitHub repo for a solo developer: free features only, never blocks you from merging your own PRs. Dry-run by default.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "kajisho5",
     "url": "https://github.com/kajisho5"

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/kajisho5/github-solo-skill/compare/v0.2.0...v0.3.0) (2026-10-04)
+
+
+### Features
+
+* gap checks found while releasing (actions-can-create-prs, ci-status, actions-hardening, open-alerts, issues-enabled; draft releases, Pages HTTPS notes) ([48f81cc](https://github.com/kajisho5/github-solo-skill/commit/48f81cc074a80924082c670409850098f225c354))
+* release-tag-format check and assetless-release note; use plain vX.Y.Z tags for our own releases ([fcacbb7](https://github.com/kajisho5/github-solo-skill/commit/fcacbb7e841c34a68ae4c1d1cebef8e5fd1e2a03))
+
 ## [0.2.0](https://github.com/kajisho5/github-solo-skill/compare/github-solo-skill-v0.1.0...github-solo-skill-v0.2.0) (2026-10-04)
 
 
