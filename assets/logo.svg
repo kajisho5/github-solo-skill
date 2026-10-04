@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="github-solo logo">
+  <rect width="256" height="256" rx="56" fill="#0b1220"/>
+  <path d="M128 36 L204 64 V122 C204 168 172 200 128 220 C84 200 52 168 52 122 V64 Z" fill="#12233f" stroke="#3fb950" stroke-width="10" stroke-linejoin="round"/>
+  <circle cx="128" cy="92" r="14" fill="#ffffff"/>
+  <path d="M128 106 V142" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/>
+  <path d="M100 150 L122 172 L162 124" stroke="#3fb950" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

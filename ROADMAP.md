@@ -14,6 +14,7 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 - `doctor`, and `restore` (every `apply --yes` saves an undo snapshot).
 - `AGENTS.md`, `.github/copilot-instructions.md` and an MCP stdio server (`scripts/solo_mcp.py`, 9 tools; apply / restore are dry runs unless `confirm`).
 - `--profile`, 0-100 score, before->after in dry-run plans, `ci-template`, GitHub Enterprise Server GraphQL routing (unit-tested URL mapping, not run against a real GHES).
+- README with real screenshots, `docs/` (why-solo, recipes, faq), CONTRIBUTING, issue / PR templates, logo and social preview (`assets/`).
 - `explain`, `badges`, `links --workflow`, `audit --quiet / --ignore / --fail-on`; opt-in `labels` and `community-files`.
 - `tests/live_check.py`: runs every write against a real scratch repo, then reverts and compares (smoke-tested against the mock).
 - **Verified against the real GitHub API (2026-10-04, public scratch repo, Windows, `gh` token):** `live_check.py` returned `RESULT: PASS`.
