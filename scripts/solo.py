@@ -106,6 +106,7 @@ JA = [
     ("Next: solo.py apply", "次の手順: solo.py apply"),
     ("(dry run; add --yes to execute)", "（ドライラン。実行するには --yes）"),
     ("No changes needed.", "変更は不要です。"),
+    ("carries the prefix", "にはプレフィックスが付いています"), ("it has no assets, so there is nothing to download directly", "ただしアセットが無く、直接ダウンロードできるものがありません"),
     ("Dry run: nothing was changed. Re-run with --yes to execute.",
      "ドライラン: 何も変更していません。実行するには --yes を付けて再実行してください。"),
     ("Executing:", "実行中:"),
@@ -1248,12 +1249,38 @@ def check_releases(ctx):
     vers = [a for a in assets if versioned_asset(a, top.get("tag_name", ""))]
     if ctx.profile == "library":
         return [R(id, DIST, OK, "latest is %s (profile library: asset names do not matter)" % top.get("tag_name"))]
+    if not assets:
+        return [R(id, DIST, WARN,
+                  "latest is %s but it has no assets, so there is nothing to download directly "
+                  "(fine for a library or a skill: use --profile library)" % top.get("tag_name"))]
     if assets and len(vers) == len(assets):
         return [R(id, DIST, WARN,
                   "latest is %s but every asset name contains a version, so a fixed /latest/download/ URL cannot work"
                   % top.get("tag_name"), details=vers)]
     return [R(id, DIST, OK, "latest is %s with %d version-less asset(s)" % (
         top.get("tag_name"), len(assets) - len(vers)))]
+
+
+TAG_OK = re.compile(r"^v?\d+\.\d+\.\d+([-+][\w.]+)?$")
+
+
+def check_release_tag_format(ctx):
+    id = "release-tag-format"
+    rels, r = fetch_releases(ctx)
+    if rels is None:
+        return [R(id, DIST, NA, "could not read releases (%s)" % r.describe())]
+    if not rels:
+        return [R(id, DIST, NA, "no releases yet")]
+    tag = rels[0].get("tag_name", "")
+    if TAG_OK.match(tag):
+        return [R(id, DIST, OK, "latest tag %s is a plain version tag" % tag)]
+    m = re.match(r"^(.+?)-v?\d+\.\d+\.\d+", tag)
+    if m:
+        return [R(id, DIST, WARN, "tag %s carries the prefix '%s-' (release-please adds the package name by default); "
+                  "links and tooling usually expect vX.Y.Z" % (tag, m.group(1)),
+                  details=['release-please: set "include-component-in-tag": false in release-please-config.json, and create a vX.Y.Z '
+                           "tag on the same commit as the old one so release-please still finds the last release"])]
+    return [R(id, DIST, WARN, "tag %s is not a version tag like v1.2.3" % tag)]
 
 
 def check_release_notes(ctx):
@@ -1347,16 +1374,16 @@ CHECKS = [check_alerts, check_security_updates, check_secret_scanning, check_pvr
           check_codeql, check_dependabot_config, check_pinning_and_release,
           check_workflow_permissions, check_solo_blocker, check_guardrail, check_tag_guard,
           check_delete_branch, check_discussions, check_pages, check_releases,
-          check_release_notes, check_meta, check_labels, check_community_files]
+          check_release_tag_format, check_release_notes, check_meta, check_labels, check_community_files]
 
 
 PROFILES = ["app", "library", "site", "docs"]
 # checks that make no sense for a kind of repo are shown as n/a instead of nagging
 PROFILE_NA = {
     "site": {"releases": "a website is not released as downloads", "release-notes-config": "a website has no release notes",
-             "tag-guard": "a website has no release tags"},
+             "tag-guard": "a website has no release tags", "release-tag-format": "a website has no release tags"},
     "docs": {"releases": "a docs repo is not released as downloads", "release-notes-config": "a docs repo has no release notes",
-             "tag-guard": "a docs repo has no release tags"},
+             "tag-guard": "a docs repo has no release tags", "release-tag-format": "a docs repo has no release tags"},
 }
 
 

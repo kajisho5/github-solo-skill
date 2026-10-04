@@ -129,9 +129,15 @@ need `--only <id>`.
 - Undo: `DELETE /repos/{o}/{r}/pages`; clear the homepage by hand.
 
 ### releases (report only)
-- ⚠️ when: no releases; or only pre-releases (`GET /repos/{o}/{r}/releases/latest` ignores pre-releases and drafts → 404);
+- ⚠️ when: no releases; or the latest release has no assets at all (fine for a library or a skill: use `--profile library`); or only pre-releases (`GET /repos/{o}/{r}/releases/latest` ignores pre-releases and drafts → 404);
   or every asset name contains a version (so `/releases/latest/download/<asset>` changes name each release).
 - Use `solo.py links` and `references/release-latest.md`.
+
+### release-tag-format (report only)
+- Why: a published tag such as `my-package-v0.2.0` (what release-please produces by default, because it adds the package name) looks odd in release links and breaks tooling that expects `vX.Y.Z`.
+- ✅ when the newest release's tag is a plain version (`v1.2.3`, `1.2.3`, `v1.2.3-rc.1`); ⚠️ when it carries a prefix or is not a version; ➖ when there is no release yet (and for `--profile site` / `docs`).
+- Fix for release-please: set `"include-component-in-tag": false` in `release-please-config.json` and, before the next release, create a `vX.Y.Z` tag on the same commit as the old one so release-please still finds the last release
+  (the option changes the tag pattern it searches for; see the release-please manifest docs).
 
 ### release-workflow (report only)
 - Why: pushing generated files to the default branch can run a workflow that publishes a release.

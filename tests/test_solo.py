@@ -78,7 +78,7 @@ class VoiceboothScenario(Base):
             "workflow-permissions": "warn", "solo-blocker": "ok", "guardrail": "warn", "tag-guard": "warn",
             "delete-branch-on-merge": "warn", "discussions": "warn", "pages": "warn",
             "labels": "warn", "community-files": "warn",
-            "releases": "warn", "release-workflow": "warn", "release-notes-config": "warn",
+            "releases": "warn", "release-workflow": "warn", "release-tag-format": "ok", "release-notes-config": "warn",
             "description": "ok", "topics": "ok", "license": "ok", "security-policy": "ok",
             "social-preview": "ok",
         }
@@ -518,7 +518,7 @@ class ConfiguredScenario(Base):
     def test_everything_ok(self):
         rc, data, st = self.audit()
         self.assertEqual(rc, 0)
-        self.assertEqual(data["summary"], {"ok": 25, "warn": 0, "bad": 0, "na": 0}, self.status(st))
+        self.assertEqual(data["summary"], {"ok": 26, "warn": 0, "bad": 0, "na": 0}, self.status(st))
 
     def test_dry_run_reports_no_changes(self):
         rc, out, _ = self.run_solo("apply", self.slug)
@@ -701,6 +701,32 @@ class Helpers(unittest.TestCase):
         self.assertEqual(got, {"npm": {"/web"}, "pip": {"/", "/svc"}, "cargo": {"/a", "/b"}})
         self.assertTrue(solo.dir_covered("/web", {"/*"}))
         self.assertFalse(solo.dir_covered("/web", {"/"}))
+
+    def test_release_tag_format_and_assetless_release(self):
+        class C(object):
+            profile = "app"
+
+            def __init__(self, rels):
+                self.rels = rels
+
+            def get(self, *a, **k):
+                return solo.Resp(200, self.rels)
+
+            def p(self, s=""):
+                return s
+        mk = lambda tag, assets=(): [{"tag_name": tag, "prerelease": False, "draft": False,
+                                      "assets": [{"name": a} for a in assets]}]
+        self.assertEqual(solo.check_release_tag_format(C(mk("v1.2.3")))[0].status, "ok")
+        self.assertEqual(solo.check_release_tag_format(C(mk("1.2.3-rc.1")))[0].status, "ok")
+        r = solo.check_release_tag_format(C(mk("github-solo-skill-v0.2.0")))[0]
+        self.assertEqual(r.status, "warn")
+        self.assertIn("include-component-in-tag", " ".join(r.details))
+        self.assertEqual(solo.check_release_tag_format(C(mk("nightly")))[0].status, "warn")
+        self.assertEqual(solo.check_release_tag_format(C([]))[0].status, "na")
+        self.assertIn("no assets", solo.check_releases(C(mk("v1.0.0")))[0].msg)
+        c = C(mk("v1.0.0"))
+        c.profile = "library"
+        self.assertEqual(solo.check_releases(c)[0].status, "ok")
 
     def test_library_profile_ignores_asset_names(self):
         class C(object):

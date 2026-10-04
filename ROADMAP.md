@@ -5,7 +5,7 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 ## Done (0.1)
 
 - `audit` (text + `--json`, exit 1 on ❌), `apply` (dry run, `--yes`, `--only`, `--skip`), `links`, `dependabot`.
-- 25 checks across Security / Solo development / Distribution / Metadata (see [references/checks.md](references/checks.md)).
+- 26 checks across Security / Solo development / Distribution / Metadata (see [references/checks.md](references/checks.md)).
 - Solo-blocker detection (classic protection and rulesets), `solo-guard` ruleset, release-on-push warning.
 - Mock GitHub API test suite, CI on Python 3.9 and 3.13, release-please.
 - `--lang ja`, `apply --json`, `audit --all-repos`, `audit --github-annotations`, `links --markdown`.

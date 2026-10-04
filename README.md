@@ -78,7 +78,7 @@ flowchart LR
 
 <p align="center"><img src="assets/demo-apply-plan.png" alt="apply prints the exact API calls and what each one changes before anything is written" width="900"></p>
 
-## What is checked (25 checks)
+## What is checked (26 checks)
 
 Details, the API used and how to undo each one: [references/checks.md](references/checks.md), or `solo.py explain CHECK_ID`.
 
@@ -95,8 +95,9 @@ Details, the API used and how to undo each one: [references/checks.md](reference
 | | `delete-branch-on-merge` | default |
 | | `discussions` | **opt-in** |
 | **Distribution** | `pages` (folder auto-detected, homepage filled in) | **opt-in** |
-| | `releases`: any release, a "latest", asset names without versions | report only |
+| | `releases`: any release, a "latest" with downloadable assets, asset names without versions | report only |
 | | `release-workflow`: a push to the default branch may create a release | report only |
+| | `release-tag-format`: the newest tag is a plain `vX.Y.Z` (release-please adds the package name by default) | report only |
 | | `release-notes-config`: `.github/release.yml` | default |
 | **Metadata** | `security-policy`: `SECURITY.md` pointing to private vulnerability reporting | default |
 | | `description`, `license` (never generated), `social-preview` (no API) | report only |

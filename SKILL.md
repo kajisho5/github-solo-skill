@@ -133,7 +133,7 @@ Full list with API, reason and how to undo each: `references/checks.md`. Summary
 | | `delete-branch-on-merge` | yes |
 | | `discussions` | **opt-in** |
 | Distribution | `pages` | **opt-in** |
-| | `releases`, `release-workflow` (report only) | n/a |
+| | `releases`, `release-workflow`, `release-tag-format` (report only) | n/a |
 | | `release-notes-config` (`.github/release.yml`) | yes |
 | Metadata | `security-policy` (`SECURITY.md`) | yes |
 | | `topics` | **opt-in** (`--topics`) |

@@ -78,7 +78,7 @@ flowchart LR
 
 <p align="center"><img src="assets/demo-apply-plan.png" alt="apply は書き込む前に、実際の API 呼び出しと各変更の内容を表示する" width="900"></p>
 
-## チェック項目（25個）
+## チェック項目（26個）
 
 各項目の API と戻し方：[references/checks.md](references/checks.md)、または `solo.py explain CHECK_ID`
 
@@ -95,8 +95,9 @@ flowchart LR
 | | `delete-branch-on-merge` | デフォルト |
 | | `discussions` | **opt-in** |
 | **配布** | `pages`（公開フォルダを自動判定、homepage も設定） | **opt-in** |
-| | `releases`：リリースの有無、latest、アセット名にバージョンが入っていないか | 報告のみ |
+| | `releases`：リリースの有無、ダウンロードできるアセットがある latest、アセット名にバージョンが入っていないか | 報告のみ |
 | | `release-workflow`：デフォルトブランチへの push でリリースが走らないか | 報告のみ |
+| | `release-tag-format`：最新のタグが素直な `vX.Y.Z` か（release-please は既定でパッケージ名が付く） | 報告のみ |
 | | `release-notes-config`：`.github/release.yml` | デフォルト |
 | **メタ情報** | `security-policy`：private vulnerability reporting へ案内する `SECURITY.md` | デフォルト |
 | | `description`、`license`（自動生成しない）、`social-preview`（API 不可） | 報告のみ |
