@@ -30,7 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "0.2.0"  # x-release-please-version
+VERSION = "0.3.0"  # x-release-please-version
 API_VERSION = os.environ.get("SOLO_API_VERSION", "2022-11-28")
 
 OK, WARN, BAD, NA = "ok", "warn", "bad", "na"
