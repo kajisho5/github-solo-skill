@@ -22,12 +22,14 @@ for the plugin). Below, `SOLO` stands for `python3 <skill dir>/scripts/solo.py`.
    `SOLO audit --all-repos OWNER`. If neither exists, ask once.
    Token: `GH_TOKEN` → `GITHUB_TOKEN` → `gh auth token`. No token → tell the user to run
    `gh auth login` (or set `GH_TOKEN`); do not ask them to paste a token into chat.
-2. **Audit.** `SOLO audit OWNER/REPO` (add `--json` if you need to parse it). Exit code 1 means there is
+2. **If anything fails or the token is new, run `SOLO doctor OWNER/REPO` first**: it shows which token is used,
+   whether the API is reachable and which admin endpoints the token can read.
+3. **Audit.** `SOLO audit OWNER/REPO` (add `--json` if you need to parse it). Exit code 1 means there is
    at least one ❌.
-3. **Summarize in the user's language, ❌ first.** For each ❌ give the one-line reason and the fix
+4. **Summarize in the user's language, ❌ first.** For each ❌ give the one-line reason and the fix
    commands the audit printed. Then ⚠️ (recommended) grouped by category, then ➖ (not applicable,
    with its reason, e.g. "private repo needs a paid plan"). Do not recite the whole table.
-4. **Apply.**
+5. **Apply.**
    - Run `SOLO apply OWNER/REPO` (dry run) and show the user the plan.
    - Default items are invisible to visitors and instantly reversible. Run `SOLO apply OWNER/REPO --yes`
      after showing the plan (the user's request to "set it up / fix it" is the go-ahead; if they only
@@ -38,7 +40,7 @@ for the plugin). Below, `SOLO` stands for `python3 <skill dir>/scripts/solo.py`.
      `SOLO apply OWNER/REPO --yes --only pages --pages-path /docs`.
    - Never try to fix a ❌ yourself with extra API calls. Explain it, show the printed commands, and
      let the user decide. (Removing an approval rule is the user's call.)
-5. **Generated files** (`.github/dependabot.yml`, `.github/release.yml`, `SECURITY.md`):
+6. **Generated files** (`.github/dependabot.yml`, `.github/release.yml`, `SECURITY.md`):
    - In a clone of the repo they are written locally only. Review them, then commit and push.
    - **Before committing/pushing, check the `release-workflow` row of the audit.** If it is ⚠️, a
      push to the default branch can start a release workflow (it may publish a real release or
@@ -49,10 +51,13 @@ for the plugin). Below, `SOLO` stands for `python3 <skill dir>/scripts/solo.py`.
      given; only add that flag after the user agreed.
    - Existing files are never overwritten. If `dependabot.yml` exists, `apply` prints the missing
      entries as a proposal; merge them by hand.
-6. **Re-audit** (`SOLO audit OWNER/REPO`) and report what changed: before/after counts and anything
+7. **Re-audit** (`SOLO audit OWNER/REPO`) and report what changed: before/after counts and anything
    that remains (opt-in items the user declined, ➖, license, social preview, which cannot be done via API).
 
 ## Other subcommands
+
+- `SOLO restore OWNER/REPO` (dry run) / `--yes`: reverts what the last `apply --yes` changed, using the snapshot it saved.
+  Offer it whenever the user regrets a change. It does not delete generated files.
 
 - `--lang ja` makes the text output Japanese (`--json` stays English); `audit --github-annotations` adds CI annotations;
   `apply --json` prints the plan and the execution log; `links --markdown` prints ready-to-paste list items.

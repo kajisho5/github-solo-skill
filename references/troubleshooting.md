@@ -1,5 +1,7 @@
 # Troubleshooting
 
+Start with `python3 scripts/solo.py doctor OWNER/REPO`: it lists the token source, API reachability and which admin endpoints the token can read.
+
 ## "could not read (HTTP 403 …)" in an audit row
 
 The row is shown as ⚠️ instead of guessing. Causes, most common first:

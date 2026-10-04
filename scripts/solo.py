@@ -25,6 +25,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -209,10 +210,11 @@ class SoloError(Exception):
 # --------------------------------------------------------------------------
 
 class Resp(object):
-    def __init__(self, status, data, text=""):
+    def __init__(self, status, data, text="", headers=None):
         self.status = status
         self.data = data
         self.text = text
+        self.headers = headers or {}
 
     @property
     def ok(self):
@@ -268,9 +270,9 @@ class Api(object):
                                      headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
-                status, raw = r.status, r.read()
+                status, raw, rh = r.status, r.read(), r.headers
         except urllib.error.HTTPError as e:
-            status, raw = e.code, e.read()
+            status, raw, rh = e.code, e.read(), e.headers
         except urllib.error.URLError as e:
             raise SoloError("network error talking to %s: %s" % (self.base, e.reason))
         text = raw.decode("utf-8", "replace") if raw else ""
@@ -280,7 +282,7 @@ class Api(object):
                 parsed = json.loads(text)
             except ValueError:
                 parsed = None
-        return Resp(status, parsed, text)
+        return Resp(status, parsed, text, dict((k.lower(), v) for k, v in (rh.items() if rh else [])))
 
     def graphql(self, query, variables=None):
         return self.request("POST", "/graphql",
@@ -315,7 +317,7 @@ class Action(object):
     """kind: api | file | note"""
 
     def __init__(self, id, kind, desc, method=None, path=None, body=None,
-                 file_path=None, content=None, after=None):
+                 file_path=None, content=None, after=None, undo=None):
         self.id = id
         self.kind = kind
         self.desc = desc
@@ -325,6 +327,7 @@ class Action(object):
         self.file_path = file_path
         self.content = content
         self.after = after  # callable(resp, state) run after success
+        self.undo = undo    # dict or callable(resp) -> dict {method, path, body}: how to revert this change
 
     def resolved_body(self, state):
         return self.body(state) if callable(self.body) else self.body
@@ -344,6 +347,7 @@ class Ctx(object):
         self.state = {}
         self.release_risk = []  # [(workflow path, [indicators], strong)]
         self.log = []
+        self.undo = []
         self._info = None
         self._tree = None
         self._files = {}
@@ -1240,6 +1244,17 @@ def print_audit(ctx, results):
 # Apply planning
 # --------------------------------------------------------------------------
 
+def _undo(method, path, body=None):
+    return {"method": method, "path": path, "body": body}
+
+
+def _undo_ruleset(ctx):
+    def undo(resp):
+        rid = (resp.data or {}).get("id") if isinstance(resp.data, dict) else None
+        return _undo("DELETE", ctx.p("/rulesets/%s" % rid)) if rid is not None else None
+    return undo
+
+
 def validate_topics(raw):
     names = [t.strip().lower() for t in (raw or "").split(",") if t.strip()]
     if not names:
@@ -1261,21 +1276,27 @@ def plan_for(ctx, res, opts):
     id = res.apply
     o = ctx
     if id == "dependabot-alerts":
-        return [Action(id, "api", "enable Dependabot alerts", "PUT", o.p("/vulnerability-alerts"))]
+        return [Action(id, "api", "enable Dependabot alerts", "PUT", o.p("/vulnerability-alerts"),
+                       undo=_undo("DELETE", o.p("/vulnerability-alerts")))]
     if id == "dependabot-security-updates":
-        return [Action(id, "api", "enable Dependabot security updates", "PUT", o.p("/automated-security-fixes"))]
+        return [Action(id, "api", "enable Dependabot security updates", "PUT", o.p("/automated-security-fixes"),
+                       undo=_undo("DELETE", o.p("/automated-security-fixes")))]
     if id == "secret-scanning":
         return [Action(id, "api", "enable secret scanning", "PATCH", o.p(),
-                       {"security_and_analysis": {"secret_scanning": {"status": "enabled"}}})]
+                       {"security_and_analysis": {"secret_scanning": {"status": "enabled"}}},
+                       undo=_undo("PATCH", o.p(), {"security_and_analysis": {"secret_scanning": {"status": "disabled"}}}))]
     if id == "push-protection":
         return [Action(id, "api", "enable push protection", "PATCH", o.p(),
-                       {"security_and_analysis": {"secret_scanning_push_protection": {"status": "enabled"}}})]
+                       {"security_and_analysis": {"secret_scanning_push_protection": {"status": "enabled"}}},
+                       undo=_undo("PATCH", o.p(), {"security_and_analysis": {"secret_scanning_push_protection": {"status": "disabled"}}}))]
     if id == "private-vuln-reporting":
         return [Action(id, "api", "enable private vulnerability reporting", "PUT",
-                       o.p("/private-vulnerability-reporting"))]
+                       o.p("/private-vulnerability-reporting"),
+                       undo=_undo("DELETE", o.p("/private-vulnerability-reporting")))]
     if id == "codeql":
         return [Action(id, "api", "enable CodeQL default setup (languages auto-detected)", "PATCH",
-                       o.p("/code-scanning/default-setup"), {"state": "configured"})]
+                       o.p("/code-scanning/default-setup"), {"state": "configured"},
+                       undo=_undo("PATCH", o.p("/code-scanning/default-setup"), {"state": "not-configured"}))]
     if id == "dependabot-config":
         ecos = res.data["ecosystems"]
         if res.data.get("missing") is not None:
@@ -1299,10 +1320,10 @@ def plan_for(ctx, res, opts):
                 say("      to lift temporarily: gh api -X PUT repos/%s/rulesets/%s -f enforcement=disabled "
                       "(and 'active' to restore)" % (ctx.slug, rid))
         return [Action(id, "api", "create ruleset solo-guard: block deleting / force-pushing the default branch "
-                       "(no PR requirement)", "POST", o.p("/rulesets"), body, after=after)]
+                       "(no PR requirement)", "POST", o.p("/rulesets"), body, after=after, undo=_undo_ruleset(o))]
     if id == "delete-branch-on-merge":
         return [Action(id, "api", "delete head branches after merge", "PATCH", o.p(),
-                       {"delete_branch_on_merge": True})]
+                       {"delete_branch_on_merge": True}, undo=_undo("PATCH", o.p(), {"delete_branch_on_merge": False}))]
     if id == "release-notes-config":
         return [file_action(o, id, ".github/release.yml", RELEASE_YML,
                             "create .github/release.yml (release-notes categories, dependabot excluded)")]
@@ -1312,9 +1333,12 @@ def plan_for(ctx, res, opts):
     if id == "workflow-permissions":
         return [Action(id, "api", "set default GITHUB_TOKEN permission to read (existing workflows that need write "
                        "must declare permissions: explicitly)", "PUT", o.p("/actions/permissions/workflow"),
-                       {"default_workflow_permissions": "read"})]
+                       {"default_workflow_permissions": "read"},
+                       undo=_undo("PUT", o.p("/actions/permissions/workflow"),
+                                  {"default_workflow_permissions": "write"}))]
     if id == "discussions":
-        return [Action(id, "api", "enable Discussions", "PATCH", o.p(), {"has_discussions": True})]
+        return [Action(id, "api", "enable Discussions", "PATCH", o.p(), {"has_discussions": True},
+                       undo=_undo("PATCH", o.p(), {"has_discussions": False}))]
     if id == "pages":
         path, note = pages_source(ctx, opts.pages_path)
         acts = []
@@ -1323,21 +1347,23 @@ def plan_for(ctx, res, opts):
             state["pages_url"] = (resp.data or {}).get("html_url")
         acts.append(Action(id, "api", "enable Pages from %s of %s (%s)" % (path, ctx.branch, note), "POST",
                            o.p("/pages"), {"build_type": "legacy", "source": {"branch": ctx.branch, "path": path}},
-                           after=after))
+                           after=after, undo=_undo("DELETE", o.p("/pages"))))
         if not ctx.info.get("homepage"):
             predicted = pages_url(ctx.owner, ctx.repo)
             acts.append(Action(id, "api", "set homepage to the Pages URL (currently empty)", "PATCH", o.p(),
-                               lambda st: {"homepage": st.get("pages_url") or predicted}))
+                               lambda st: {"homepage": st.get("pages_url") or predicted},
+                               undo=_undo("PATCH", o.p(), {"homepage": ""})))
         return acts
     if id == "tag-guard":
         body = {"name": "solo-tag-guard", "target": "tag", "enforcement": "active",
                 "conditions": {"ref_name": {"include": ["refs/tags/v*"], "exclude": []}},
                 "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}]}
         return [Action(id, "api", "create ruleset solo-tag-guard: block deleting / force-moving v* tags", "POST",
-                       o.p("/rulesets"), body)]
+                       o.p("/rulesets"), body, undo=_undo_ruleset(o))]
     if id == "topics":
         names = validate_topics(opts.topics)
-        return [Action(id, "api", "set topics: %s" % ", ".join(names), "PUT", o.p("/topics"), {"names": names})]
+        return [Action(id, "api", "set topics: %s" % ", ".join(names), "PUT", o.p("/topics"), {"names": names},
+                       undo=_undo("PUT", o.p("/topics"), {"names": list(ctx.info.get("topics") or [])}))]
     return []
 
 
@@ -1423,6 +1449,10 @@ def execute(ctx, actions, opts):
             if r.ok:
                 say("  done    %s" % tgt)
                 _log(ctx, "done", tgt)
+                if a.undo:
+                    u = a.undo(r) if callable(a.undo) else a.undo
+                    if u:
+                        ctx.undo.append(dict(u, id=a.id))
                 if a.after:
                     a.after(r, ctx.state)
             else:
@@ -1464,6 +1494,39 @@ def execute(ctx, actions, opts):
     return failures
 
 
+def state_dir():
+    d = os.environ.get("SOLO_STATE_DIR")
+    if d:
+        return d
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    else:
+        base = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+    return os.path.join(base, "github-solo")
+
+
+def save_snapshot(ctx):
+    d = state_dir()
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    stamp = "%s%03d" % (time.strftime("%Y%m%dT%H%M%S"), int(time.time() * 1000) % 1000)
+    path = os.path.join(d, "%s__%s__%s.json" % (ctx.owner, ctx.repo, stamp))
+    doc = {"repo": ctx.slug, "created": stamp, "undo": ctx.undo}
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=2)
+    return path
+
+
+def latest_snapshot(owner, repo):
+    d = state_dir()
+    prefix = "%s__%s__" % (owner, repo)
+    try:
+        names = sorted(n for n in os.listdir(d) if n.startswith(prefix) and n.endswith(".json"))
+    except OSError:
+        return None
+    return os.path.join(d, names[-1]) if names else None
+
+
 def hint_for(r):
     if "proxy" in r.message.lower():
         return "a proxy/sandbox in front of the API blocks this path; run solo.py from your own machine"
@@ -1474,6 +1537,47 @@ def hint_for(r):
     if r.status == 422:
         return "GitHub rejected the request; the setting may already exist or be unavailable for this repo"
     return "see references/troubleshooting.md"
+
+
+def cmd_restore(args):
+    owner, repo, _ = resolve_target(args.repo)
+    token = get_token()
+    if not token:
+        raise SoloError("no token: set GH_TOKEN / GITHUB_TOKEN or run `gh auth login`")
+    path = args.snapshot or latest_snapshot(owner, repo)
+    if not path or not os.path.exists(path):
+        say("Nothing to restore for %s/%s (no snapshot in %s)." % (owner, repo, state_dir()))
+        return 0
+    with open(path, encoding="utf-8") as f:
+        doc = json.load(f)
+    ops = list(reversed(doc.get("undo", [])))
+    say("github-solo restore: %s (%s)" % (doc.get("repo", "%s/%s" % (owner, repo)), "executing" if args.yes else "dry run"))
+    say("snapshot: %s" % path)
+    for i, op in enumerate(ops, 1):
+        body = (" " + json.dumps(op["body"], separators=(",", ":"))) if op.get("body") is not None else ""
+        say("  [%d] %s: %s %s%s" % (i, op.get("id"), op["method"], op["path"], body))
+    say("Files written or committed by apply are not touched; remove them yourself if you do not want them.")
+    if not args.yes:
+        say("\nDry run: nothing was changed. Re-run with --yes to revert.")
+        return 0
+    api = Api(token)
+    failures = 0
+    say("\nExecuting:")
+    for op in ops:
+        r = api.request(op["method"], op["path"], op.get("body"))
+        tgt = "%s %s" % (op["method"], op["path"])
+        if r.ok or r.status == 404:
+            say("  done    %s%s" % (tgt, "" if r.ok else " (already gone)"))
+        else:
+            failures += 1
+            say("  FAILED  %s -> %s" % (tgt, r.describe()))
+            say("          hint: %s" % hint_for(r))
+    if failures:
+        say("\nFinished with %d failure(s); the snapshot is kept so you can run restore again." % failures)
+        return 1
+    os.replace(path, path + ".restored")
+    say("\nDone. Run `solo.py audit %s/%s` to verify." % (owner, repo))
+    return 0
 
 
 def cmd_apply(args):
@@ -1538,8 +1642,13 @@ def _apply(args):
             "Finished with %d failure(s)" % failures if failures else "Done", ctx.slug))
     elif changes:
         say("\nDry run: nothing was changed. Re-run with --yes to execute.")
+    snapshot = None
+    if ctx.undo:
+        snapshot = save_snapshot(ctx)
+        say("Undo information saved: %s" % snapshot)
+        say("To revert what was just applied: solo.py restore %s --yes" % ctx.slug)
     report = {
-        "repo": ctx.slug, "dry_run": not args.yes,
+        "repo": ctx.slug, "dry_run": not args.yes, "snapshot": snapshot,
         "plan": [{"id": a.id, "kind": a.kind, "method": a.method, "path": a.path or a.file_path,
                   "body": None if callable(a.body) else (a.body if a.kind == "api" else None),
                   "description": a.desc, "change": counts_as_change(a, ctx, args),
@@ -1662,6 +1771,103 @@ def cmd_audit_all(args):
     return code
 
 
+def token_kind(token):
+    for prefix, kind in (("github_pat_", "fine-grained personal access token"), ("ghp_", "classic personal access token"),
+                         ("gho_", "OAuth token (for example from `gh auth login`)"),
+                         ("ghu_", "GitHub App user token"), ("ghs_", "GitHub App / Actions installation token")):
+        if token.startswith(prefix):
+            return kind
+    return "unrecognised token format"
+
+
+def cmd_doctor(args):
+    rows = []  # (status, name, text)
+
+    def add(status, name, text):
+        rows.append((status, name, text))
+
+    v = sys.version_info
+    add(OK if v >= (3, 9) else BAD, "python", "%d.%d.%d%s" % (v[0], v[1], v[2], "" if v >= (3, 9) else " (3.9+ required)"))
+    for tool, required in (("git", False), ("gh", False)):
+        try:
+            out = subprocess.run([tool, "--version"], capture_output=True, text=True, timeout=10)
+            add(OK, tool, (out.stdout.splitlines() or ["found"])[0])
+        except (OSError, subprocess.SubprocessError):
+            add(NA, tool, "not found (optional: git infers OWNER/REPO, gh is only a token source)")
+    token, source = None, None
+    for key in ("GH_TOKEN", "GITHUB_TOKEN"):
+        if os.environ.get(key, "").strip():
+            token, source = os.environ[key].strip(), key
+            break
+    if not token:
+        token = get_token()
+        source = "gh auth token" if token else None
+    api = None
+    if not token:
+        add(BAD, "token", "none found. Set GH_TOKEN / GITHUB_TOKEN or run `gh auth login`")
+    else:
+        add(OK, "token", "from %s: %s" % (source, token_kind(token)))
+        api = Api(token)
+        add(OK if api.base == "https://api.github.com" else WARN, "api base", api.base)
+    if api:
+        try:
+            rl = api.request("GET", "/rate_limit")
+            if rl.ok:
+                core = ((rl.data or {}).get("resources") or {}).get("core") or {}
+                add(OK, "api", "reachable (rate limit %s/%s left)" % (core.get("remaining", "?"), core.get("limit", "?")))
+            elif rl.status == 401:
+                add(BAD, "api", "reachable but the token was rejected (HTTP 401): expired, revoked or mistyped")
+            else:
+                add(WARN, "api", "reachable, /rate_limit answered %s" % rl.describe())
+            me = api.request("GET", "/user")
+            scopes = rl.headers.get("x-oauth-scopes")
+            if me.ok and isinstance(me.data, dict):
+                add(OK, "user", "%s%s" % (me.data.get("login"), (" (classic scopes: %s)" % (scopes or "none")) if scopes is not None else ""))
+            else:
+                add(WARN, "user", "cannot read /user (%s); normal for some app / fine-grained tokens" % me.describe())
+        except SoloError as e:
+            add(BAD, "api", str(e))
+            api = None
+    slug = None
+    if api and (args.repo or git_origin()):
+        try:
+            owner, repo, _ = resolve_target(args.repo)
+            slug = "%s/%s" % (owner, repo)
+            ctx = Ctx(api, owner, repo)
+            info = ctx.info
+            perms = info.get("permissions") or {}
+            level = "admin" if perms.get("admin") else ("push (not admin: most settings cannot be changed)" if perms.get("push") else "read only")
+            add(OK if perms.get("admin") else WARN, "repo", "%s (%s), your access: %s" % (
+                slug, "private" if info.get("private") else "public", level))
+            probes = [("vulnerability-alerts", "/vulnerability-alerts", (204, 404)), ("rulesets", "/rulesets", (200,)),
+                      ("code-scanning", "/code-scanning/default-setup", (200,)),
+                      ("workflow permissions", "/actions/permissions/workflow", (200,)),
+                      ("collaborators", "/collaborators", (200,)), ("pages", "/pages", (200, 404))]
+            for name, suffix, okay in probes:
+                r = api.request("GET", ctx.p(suffix))
+                if r.status in okay:
+                    add(OK, "read " + name, "ok")
+                elif r.status in (401, 403):
+                    add(WARN, "read " + name, "%s - token or plan lacks access (references/troubleshooting.md)" % r.describe())
+                else:
+                    add(WARN, "read " + name, r.describe())
+        except SoloError as e:
+            add(BAD, "repo", str(e))
+    code = 1 if any(r[0] == BAD for r in rows) else 0
+    if args.json:
+        builtins.print(json.dumps({"checks": [{"name": n, "status": st, "message": t} for st, n, t in rows],
+                                   "exit_code": code}, indent=2, ensure_ascii=False))
+        return code
+    say("github-solo doctor")
+    width = max(len(n) for _, n, _ in rows)
+    for st, n, t in rows:
+        say("  %s %-*s  %s" % (ICON[st], width, n, t))
+    if not slug:
+        say("\nTip: pass OWNER/REPO (or run inside a clone) to also check access to that repo.")
+    say("\n%s" % ("Problems found: fix the lines marked ❌ first." if code else "Ready: run `solo.py audit OWNER/REPO`."))
+    return code
+
+
 def cmd_links(args):
     ctx = make_ctx(args)
     rels, r = fetch_releases(ctx)
@@ -1744,7 +1950,14 @@ def build_parser():
     li.add_argument("--markdown", action="store_true", help="print Markdown list items instead of bare URLs")
     d = sub.add_parser("dependabot", help="print a generated dependabot.yml")
     d.add_argument("repo", nargs="?")
-    for sp in (a, ap, li, d):
+    dr = sub.add_parser("doctor", help="check token, permissions and connectivity before you start")
+    dr.add_argument("repo", nargs="?")
+    dr.add_argument("--json", action="store_true", help="machine-readable output")
+    rs = sub.add_parser("restore", help="revert what the last `apply --yes` changed (dry run unless --yes)")
+    rs.add_argument("repo", nargs="?")
+    rs.add_argument("--yes", action="store_true", help="execute (default is a dry run)")
+    rs.add_argument("--snapshot", help="snapshot file to use (default: the newest for this repo)")
+    for sp in (a, ap, li, d, dr, rs):
         sp.add_argument("--lang", choices=["en", "ja"], help="output language of the text output (default: SOLO_LANG or $LANG)")
     return p
 
@@ -1760,7 +1973,8 @@ def main(argv=None):
         LANG[0] = args.lang
     try:
         return {"audit": cmd_audit, "apply": cmd_apply, "links": cmd_links,
-                "dependabot": cmd_dependabot}[args.cmd](args)
+                "dependabot": cmd_dependabot, "doctor": cmd_doctor,
+                "restore": cmd_restore}[args.cmd](args)
     except SoloError as e:
         say("error: %s" % e, file=sys.stderr)
         return 2

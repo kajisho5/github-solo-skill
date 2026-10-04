@@ -87,6 +87,7 @@ Skills written for teams (for example `netresearch/github-project-skill`) turn o
 - **Diagnose first.** One command prints every setting as ✅ OK / ⚠️ recommended / ❌ action needed / ➖ not applicable, with the reason and the `apply` id that fixes it. Exit code 1 if there is any ❌ (usable in CI).
 - **Dry-run by default, idempotent.** `apply` prints the exact API calls. `--yes` runs them. A second run writes nothing.
 - **Distribution built in.** `links` prints a stable `/releases/latest/download/<asset>` URL, or tells you why none can work (only pre-releases, version in the asset name) and how to fix it.
+- **Undo.** Every `apply --yes` saves what it changed (`~/.local/state/github-solo/`, `%LOCALAPPDATA%\github-solo` on Windows, `SOLO_STATE_DIR` to override) and `restore` reverts exactly that. Generated files are left for you to delete.
 - **No dependencies.** `scripts/solo.py` is a single file on the Python 3.9+ standard library; it talks to the GitHub REST/GraphQL API directly.
 - **Tested without the network.** The tests run the real script against a mock GitHub API server (`python -m unittest`).
 
@@ -118,6 +119,8 @@ python3 scripts/solo.py apply OWNER/REPO --yes --only topics --topics audio,stre
 | `apply [OWNER/REPO] [--yes] [--only ids] [--skip ids] [--pages-path / \| /docs] [--topics a,b] [--commit-files] [--accept-release-risk] [--json]` | dry-run plan; `--yes` executes; `--json` prints the plan and the execution log |
 | `links [OWNER/REPO] [--markdown]` | stable latest-release download URLs (optionally as Markdown list items), or why they cannot work |
 | `dependabot [OWNER/REPO]` | print a generated `dependabot.yml` (monthly, one grouped PR per ecosystem) |
+| `doctor [OWNER/REPO] [--json]` | check python/git/gh, which token is used (never printed), API reachability, your access to the repo and to each admin endpoint, before anything else goes wrong |
+| `restore [OWNER/REPO] [--yes] [--snapshot FILE]` | revert what the last `apply --yes` changed (dry run unless `--yes`) |
 
 Talk to your agent instead:
 
@@ -189,6 +192,9 @@ Without any agent: `python3 scripts/solo.py --help`. Update a clone with `git pu
 ```bash
 python -m unittest           # all tests, no network: a mock GitHub API server runs in-process
 python -m unittest tests.test_solo.VoiceboothScenario -v
+
+# against the real API, on a disposable repo you own (changes its settings, then reverts them):
+python3 tests/live_check.py YOU/scratch-repo --confirm YOU/scratch-repo
 ```
 
 Test scenarios (`tests/test_solo.py`, fixtures in `tests/fixtures.py`, server in `tests/mock_github.py`): a public C++ app that releases on push (voicebooth-style), a solo repo locked by a required approval, a private free-plan repo, and a fully configured repo (zero writes). Each asserts the audit verdicts, the dry-run plan, and the exact write requests (method, path, body) the mock received. CI runs on Python 3.9 and 3.13 (`.github/workflows/test.yml`, actions pinned by SHA, `permissions: contents: read`).

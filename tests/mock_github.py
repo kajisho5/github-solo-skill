@@ -27,6 +27,7 @@ class MockGitHub(object):
                 raw = b"" if data is None else json.dumps(data).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("X-OAuth-Scopes", "repo, read:org")
                 self.send_header("Content-Length", str(len(raw)))
                 self.end_headers()
                 self.wfile.write(raw)
@@ -78,6 +79,8 @@ class MockGitHub(object):
         s = self.state
         repo = s["repo"]
         base = "/repos/%s" % repo["full_name"]
+        if path == "/rate_limit" and method == "GET":
+            return 200, {"resources": {"core": {"limit": 5000, "remaining": 4999}}}
         if path == "/user" and method == "GET":
             return 200, {"login": repo["owner"]["login"]}
         if path in ("/user/repos", "/orgs/%s/repos" % repo["owner"]["login"],
@@ -108,11 +111,17 @@ class MockGitHub(object):
             if method == "PUT":
                 s["alerts"] = True
                 return 204, None
+            if method == "DELETE":
+                s["alerts"] = False
+                return 204, None
         if sub == "/automated-security-fixes":
             if method == "GET":
                 return 200, s["security_fixes"]
             if method == "PUT":
                 s["security_fixes"] = {"enabled": True, "paused": False}
+                return 204, None
+            if method == "DELETE":
+                s["security_fixes"] = {"enabled": False, "paused": False}
                 return 204, None
         if sub == "/private-vulnerability-reporting":
             if method == "GET":
@@ -120,10 +129,16 @@ class MockGitHub(object):
             if method == "PUT":
                 s["pvr"] = True
                 return 204, None
+            if method == "DELETE":
+                s["pvr"] = False
+                return 204, None
         if sub == "/code-scanning/default-setup":
             if method == "GET":
                 return 200, s["codeql"]
             if method == "PATCH":
+                if body.get("state") == "not-configured":
+                    s["codeql"] = {"state": "not-configured", "languages": []}
+                    return 202, {}
                 s["codeql"] = {"state": "configured", "languages": ["c-cpp"]}
                 return 202, {"run_id": 1, "run_url": "x"}
         if sub == "/languages" and method == "GET":
@@ -173,6 +188,11 @@ class MockGitHub(object):
                 rs["id"] = self._next_id
                 s["rulesets"].append(rs)
                 return 201, rs
+        m = re.match(r"^/rulesets/(\d+)$", sub)
+        if m and method == "DELETE":
+            before = len(s["rulesets"])
+            s["rulesets"] = [r for r in s["rulesets"] if str(r["id"]) != m.group(1)]
+            return (204, None) if len(s["rulesets"]) < before else (404, {"message": "Not Found"})
         if sub == "/collaborators" and method == "GET":
             return 200, s["collaborators"]
         if sub == "/actions/permissions/workflow":
@@ -190,6 +210,11 @@ class MockGitHub(object):
                 url = "https://%s.github.io/%s/" % (repo["owner"]["login"], repo["name"])
                 s["pages"] = {"html_url": url, "source": body["source"], "status": None}
                 return 201, s["pages"]
+            if method == "DELETE":
+                if s["pages"] is None:
+                    return 404, {"message": "Not Found"}
+                s["pages"] = None
+                return 204, None
         if sub == "/releases" and method == "GET":
             return 200, s["releases"]
         if sub == "/releases/latest" and method == "GET":

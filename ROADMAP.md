@@ -11,11 +11,13 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 - `--lang ja`, `apply --json`, `audit --all-repos`, `audit --github-annotations`, `links --markdown`.
 - Per-directory coverage of an existing `dependabot.yml`; release detection through reusable workflows and `refs/tags` conditions.
 - Opt-in `tag-guard` ruleset for `v*` tags.
+- `doctor`, and `restore` (every `apply --yes` saves an undo snapshot).
+- `tests/live_check.py`: runs every write against a real scratch repo, then reverts and compares (smoke-tested against the mock).
 
 ## Next
 
-- **Live verification of every write against a scratch repo.** The tests assert the request bodies against a mock built from the
-  GitHub REST docs; each write has not yet been exercised against the real API from this project's CI.
+- **Run `tests/live_check.py` against a real scratch repo and fix whatever it finds.** The unit tests assert the request bodies against
+  a mock built from the GitHub REST docs; the real API has not been exercised yet.
 - **Fine-grained token matrix.** Confirm the minimum permission per endpoint by running each call with a token that has only that permission
   (the table in the README is taken from the GitHub docs, not measured).
 - **Dependabot manifest names.** The ecosystem names come from Dependabot's options reference. The manifest file names

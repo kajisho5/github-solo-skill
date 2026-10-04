@@ -28,9 +28,11 @@ class Base(unittest.TestCase):
         self.mock = mock_github.MockGitHub(self.state()).start()
         self.addCleanup(self.mock.stop)
         self.tmp = tempfile.mkdtemp()
+        self.state_dir = os.path.join(self.tmp, "state")
 
     def run_solo(self, *args, **kw):
-        env = dict(os.environ, SOLO_API_BASE=self.mock.url, GH_TOKEN="test-token")
+        env = dict(os.environ, SOLO_API_BASE=self.mock.url, GH_TOKEN="test-token",
+                   SOLO_STATE_DIR=self.state_dir, SOLO_LANG="en")
         env.pop("GITHUB_TOKEN", None)
         p = subprocess.run([sys.executable, SOLO] + list(args), env=env,
                            cwd=kw.get("cwd", self.tmp), capture_output=True, text=True)
@@ -78,6 +80,70 @@ class VoiceboothScenario(Base):
         self.assertNotIn("npm", st["dependabot-config"]["message"])  # vendored package.json ignored
         self.assertIn("no index.html", st["pages"]["message"])
         self.assertEqual(data["summary"]["bad"], 0)
+
+    def test_apply_saves_snapshot_and_restore_reverts_it(self):
+        initial = json.loads(json.dumps(self.mock.state))
+        rc, out, err = self.run_solo("apply", self.slug, "--yes", "--only",
+                                     "dependabot-alerts,dependabot-security-updates,private-vuln-reporting,"
+                                     "codeql,guardrail,delete-branch-on-merge,discussions,pages,topics,tag-guard,"
+                                     "workflow-permissions", "--topics", "a,b")
+        self.assertEqual(rc, 0, out + err)
+        self.assertIn("Undo information saved", out)
+        snaps = os.listdir(self.state_dir)
+        self.assertEqual(len(snaps), 1)
+        self.assertEqual(oct(os.stat(os.path.join(self.state_dir, snaps[0])).st_mode & 0o777), "0o600")
+        st = self.mock.state
+        self.assertTrue(st["alerts"])
+        self.assertEqual(len(st["rulesets"]), 2)
+        self.assertIsNotNone(st["pages"])
+        # dry run changes nothing
+        self.mock.clear_writes()
+        rc, out, _ = self.run_solo("restore", self.slug)
+        self.assertEqual(rc, 0)
+        self.assertIn("Dry run", out)
+        self.assertEqual(self.writes(), [])
+        rc, out, err = self.run_solo("restore", self.slug, "--yes")
+        self.assertEqual(rc, 0, out + err)
+        self.assertEqual(self.mock.state["alerts"], initial["alerts"])
+        self.assertEqual(self.mock.state["security_fixes"], initial["security_fixes"])
+        self.assertEqual(self.mock.state["pvr"], initial["pvr"])
+        self.assertEqual(self.mock.state["codeql"], initial["codeql"])
+        self.assertEqual(self.mock.state["rulesets"], initial["rulesets"])
+        self.assertIsNone(self.mock.state["pages"])
+        self.assertEqual(self.mock.state["workflow_perms"], initial["workflow_perms"])
+        for k in ("delete_branch_on_merge", "has_discussions", "topics"):
+            self.assertEqual(self.mock.state["repo"][k], initial["repo"][k], k)
+        self.assertFalse(self.mock.state["repo"]["homepage"])  # empty again (null and "" both mean none)
+        self.assertTrue(os.listdir(self.state_dir)[0].endswith(".restored"))
+        rc, out, _ = self.run_solo("restore", self.slug, "--yes")
+        self.assertIn("Nothing to restore", out)
+
+    def test_live_check_script_passes_against_the_mock(self):
+        env = dict(os.environ, SOLO_API_BASE=self.mock.url, GH_TOKEN="test-token", SOLO_STATE_DIR=self.state_dir)
+        script = os.path.join(ROOT, "tests", "live_check.py")
+        p = subprocess.run([sys.executable, script, self.slug, "--confirm", self.slug], env=env,
+                           capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("RESULT: PASS", p.stdout)
+        p = subprocess.run([sys.executable, script, self.slug, "--confirm", "other/repo"], env=env,
+                           capture_output=True, text=True)
+        self.assertNotEqual(p.returncode, 0)
+
+    def test_no_snapshot_for_dry_run_or_noop(self):
+        self.run_solo("apply", self.slug)
+        self.assertFalse(os.path.exists(self.state_dir))
+
+    def test_doctor(self):
+        rc, out, err = self.run_solo("doctor", self.slug)
+        self.assertEqual(rc, 0, out + err)
+        self.assertIn("token", out)
+        self.assertIn("unrecognised token format", out)
+        self.assertIn("admin", out)
+        self.assertNotIn("test-token", out)
+        rc, out, _ = self.run_solo("doctor", self.slug, "--json")
+        data = json.loads(out)
+        self.assertEqual(data["exit_code"], 0)
+        self.assertIn("read rulesets", [c["name"] for c in data["checks"]])
 
     def test_tag_guard_is_opt_in(self):
         rc, out, _ = self.run_solo("apply", self.slug)

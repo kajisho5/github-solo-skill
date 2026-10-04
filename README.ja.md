@@ -88,6 +88,7 @@ Next: solo.py apply you/your-app   (dry run; add --yes to execute)
 - **まず診断。** 1コマンドで全項目を ✅ OK / ⚠️ 推奨 / ❌ 要対応 / ➖ 対象外 で表示。理由と対応する `apply` id 付き。❌ があれば終了コード 1（CI で使える）。
 - **デフォルトはドライラン、冪等。** `apply` は実行する API 呼び出しをそのまま表示。`--yes` で実行。2回目は何も書き込みません。
 - **配布まわりも対応。** `links` は固定 URL `/releases/latest/download/<asset>` を出力。使えない場合（Pre-release のみ、アセット名にバージョン入り）は理由と対処を表示。
+- **元に戻せる。** `apply --yes` のたびに変更内容を保存し（`~/.local/state/github-solo/`、Windows は `%LOCALAPPDATA%\github-solo`、`SOLO_STATE_DIR` で変更可）、`restore` がその分だけ戻します。生成したファイルは自分で削除してください。
 - **依存ゼロ。** `scripts/solo.py` は Python 3.9+ 標準ライブラリだけの単一ファイル。GitHub の REST/GraphQL API を直接呼びます。
 - **ネットワーク不要のテスト。** 実スクリプトをモック GitHub API サーバーに向けて実行（`python -m unittest`）。
 
@@ -119,6 +120,8 @@ clone の中では `OWNER/REPO` を省略でき、`git remote origin` から推�
 | `apply [OWNER/REPO] [--yes] [--only ids] [--skip ids] [--pages-path / \| /docs] [--topics a,b] [--commit-files] [--accept-release-risk] [--json]` | ドライランで計画表示、`--yes` で実行。`--json` は計画と実行ログを出力 |
 | `links [OWNER/REPO] [--markdown]` | 最新版の固定ダウンロード URL（`--markdown` で Markdown のリスト形式。使えない場合は理由） |
 | `dependabot [OWNER/REPO]` | `dependabot.yml` を生成して標準出力へ（monthly、エコシステムごとに1 PR へ集約） |
+| `doctor [OWNER/REPO] [--json]` | python/git/gh の有無、使われるトークン（値は表示しない）、API への到達、リポジトリと各管理系エンドポイントへのアクセスを事前に確認 |
+| `restore [OWNER/REPO] [--yes] [--snapshot FILE]` | 直前の `apply --yes` が変更した内容を元に戻す（`--yes` なしはドライラン） |
 
 エージェントにはこう頼めます。
 
@@ -190,6 +193,9 @@ claude plugin install github-solo@github-solo-skill
 ```bash
 python -m unittest           # 全テスト。ネットワーク不要（モック GitHub API サーバーを内部で起動）
 python -m unittest tests.test_solo.VoiceboothScenario -v
+
+# 実 API で検証（自分の使い捨てリポジトリの設定を変更し、そのあと元に戻します）:
+python3 tests/live_check.py YOU/scratch-repo --confirm YOU/scratch-repo
 ```
 
 テストシナリオ（`tests/test_solo.py`、fixture は `tests/fixtures.py`、サーバーは `tests/mock_github.py`）：push でリリースが走る公開 C++ アプリ（voicebooth 型）、承認必須で詰んだ1人開発リポ、private（無料プラン）リポ、設定済みリポ（書き込みゼロ）。各シナリオで audit の判定、ドライランの計画、モックが受けた書き込みリクエスト（メソッド・パス・ボディ）を検証します。CI は Python 3.9 と 3.13 で実行（`.github/workflows/test.yml`、actions は SHA 固定、`permissions: contents: read`）。
