@@ -129,6 +129,30 @@ class VoiceboothScenario(Base):
                            capture_output=True, text=True)
         self.assertNotEqual(p.returncode, 0)
 
+    def test_environment_detection(self):
+        d = solo.detect_environment
+        self.assertEqual(d({"CLAUDE_CODE_REMOTE": "true", "CLAUDE_CODE_ENTRYPOINT": "remote_mobile",
+                            "IS_SANDBOX": "1"})["kind"], "cloud")
+        self.assertEqual(d({"CCR_AGENT_PROXY_ENABLED": "1"})["kind"], "cloud")
+        self.assertEqual(d({"CLAUDECODE": "1", "CLAUDE_CODE_ENTRYPOINT": "cli"})["kind"], "local-claude-code")
+        self.assertEqual(d({"CLAUDECODE": "1", "CLAUDE_CODE_REMOTE": "false"})["kind"], "local-claude-code")
+        self.assertEqual(d({})["kind"], "shell")
+        self.assertEqual(d({"CLAUDE_CODE_ENTRYPOINT": "remote_mobile", "CLAUDE_CODE_REMOTE": "true"})["entrypoint"],
+                         "remote_mobile")
+
+    def test_doctor_reports_environment(self):
+        clean = {k: v for k, v in os.environ.items()
+                 if not k.startswith(("CLAUDE", "CCR_")) and k != "IS_SANDBOX"}
+        base = dict(clean, SOLO_API_BASE=self.mock.url, GH_TOKEN="test-token", SOLO_STATE_DIR=self.state_dir)
+        for extra, kind, note in (({}, "shell", False),
+                                  ({"CLAUDECODE": "1", "CLAUDE_CODE_ENTRYPOINT": "cli"}, "local-claude-code", False),
+                                  ({"CLAUDE_CODE_REMOTE": "true", "CLAUDE_CODE_ENTRYPOINT": "remote_mobile"}, "cloud", True)):
+            p = subprocess.run([sys.executable, SOLO, "doctor", self.slug, "--json"], env=dict(base, **extra),
+                               capture_output=True, text=True)
+            data = json.loads(p.stdout)
+            self.assertEqual(data["environment"]["kind"], kind)
+            self.assertEqual(any(c["name"] == "cloud note" for c in data["checks"]), note)
+
     def test_no_snapshot_for_dry_run_or_noop(self):
         self.run_solo("apply", self.slug)
         self.assertFalse(os.path.exists(self.state_dir))

@@ -15,6 +15,26 @@ Where is the script? In the directory this SKILL.md was loaded from: `<skill dir
 (`~/.claude/skills/github-solo/scripts/solo.py` for a user install, `${CLAUDE_PLUGIN_ROOT}/scripts/solo.py`
 for the plugin). Below, `SOLO` stands for `python3 <skill dir>/scripts/solo.py`.
 
+## Step 0: find out where you are running (never assume)
+
+Advice depends on it: a cloud container can read GitHub but its network proxy may refuse settings writes,
+while Claude Code on the user's own machine can run `apply --yes` directly. Determine it from facts:
+
+1. Run `SOLO doctor` and read the `environment` row (or check the variables yourself:
+   `CLAUDE_CODE_REMOTE=true` / `CCR_AGENT_PROXY_ENABLED` → managed cloud container;
+   `CLAUDECODE=1` without those → Claude Code on this machine; neither → plain shell/CI).
+   `CLAUDE_CODE_ENTRYPOINT` shows how the session was started (for example `remote_mobile` was observed in a cloud
+   session started from the app); report the raw value and do not guess what an unfamiliar value means: say it is unknown.
+2. Tell the user in one line what you detected ("This is a cloud Claude Code session, not your computer").
+3. Then tailor:
+   - **Cloud container:** audits (reads) usually work; settings writes may fail with 403 "not permitted through this
+     proxy". Do not retry or route around it. Read the environment's documentation (the `read_documentation` tool in
+     Claude Code cloud sessions) before explaining, then give the user the exact commands to run on their own machine.
+   - **Claude Code on the user's machine / plain shell:** run the workflow below directly.
+   - **Unknown:** ask the user where they want the changes to run.
+4. Repos outside the session's allowed set are not reachable by API from a cloud session even for reads; say so
+   instead of guessing the repo's state.
+
 ## Workflow (follow in order)
 
 1. **Identify the repo.** Use the `OWNER/REPO` the user gave. Otherwise the current directory's

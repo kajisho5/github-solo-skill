@@ -120,7 +120,7 @@ clone の中では `OWNER/REPO` を省略でき、`git remote origin` から推�
 | `apply [OWNER/REPO] [--yes] [--only ids] [--skip ids] [--pages-path / \| /docs] [--topics a,b] [--commit-files] [--accept-release-risk] [--json]` | ドライランで計画表示、`--yes` で実行。`--json` は計画と実行ログを出力 |
 | `links [OWNER/REPO] [--markdown]` | 最新版の固定ダウンロード URL（`--markdown` で Markdown のリスト形式。使えない場合は理由） |
 | `dependabot [OWNER/REPO]` | `dependabot.yml` を生成して標準出力へ（monthly、エコシステムごとに1 PR へ集約） |
-| `doctor [OWNER/REPO] [--json]` | python/git/gh の有無、使われるトークン（値は表示しない）、API への到達、リポジトリと各管理系エンドポイントへのアクセスを事前に確認 |
+| `doctor [OWNER/REPO] [--json]` | 実行場所（クラウドコンテナ / 手元の Claude Code / 通常のシェル）の判定、python/git/gh の有無、使われるトークン（値は表示しない）、API への到達、リポジトリと各管理系エンドポイントへのアクセスを事前に確認 |
 | `restore [OWNER/REPO] [--yes] [--snapshot FILE]` | 直前の `apply --yes` が変更した内容を元に戻す（`--yes` なしはドライラン） |
 
 エージェントにはこう頼めます。

@@ -119,7 +119,7 @@ python3 scripts/solo.py apply OWNER/REPO --yes --only topics --topics audio,stre
 | `apply [OWNER/REPO] [--yes] [--only ids] [--skip ids] [--pages-path / \| /docs] [--topics a,b] [--commit-files] [--accept-release-risk] [--json]` | dry-run plan; `--yes` executes; `--json` prints the plan and the execution log |
 | `links [OWNER/REPO] [--markdown]` | stable latest-release download URLs (optionally as Markdown list items), or why they cannot work |
 | `dependabot [OWNER/REPO]` | print a generated `dependabot.yml` (monthly, one grouped PR per ecosystem) |
-| `doctor [OWNER/REPO] [--json]` | check python/git/gh, which token is used (never printed), API reachability, your access to the repo and to each admin endpoint, before anything else goes wrong |
+| `doctor [OWNER/REPO] [--json]` | detect where it runs (cloud container / Claude Code on your machine / plain shell), check python/git/gh, which token is used (never printed), API reachability, your access to the repo and to each admin endpoint, before anything else goes wrong |
 | `restore [OWNER/REPO] [--yes] [--snapshot FILE]` | revert what the last `apply --yes` changed (dry run unless `--yes`) |
 
 Talk to your agent instead:

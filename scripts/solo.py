@@ -1771,6 +1771,28 @@ def cmd_audit_all(args):
     return code
 
 
+def detect_environment(env=None):
+    """Where is this running? Only signals that are actually present are used; nothing is guessed.
+    kind: "cloud" (Claude Code in a managed cloud container, e.g. started from the web/mobile app),
+          "local-claude-code" (Claude Code on this machine), "shell" (no Claude Code signal)."""
+    env = os.environ if env is None else env
+    entry = env.get("CLAUDE_CODE_ENTRYPOINT") or ""
+    sig = []
+    cloud = [k for k in ("CLAUDE_CODE_REMOTE", "CCR_AGENT_PROXY_ENABLED", "CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE")
+             if env.get(k) and env.get(k).lower() not in ("0", "false")]
+    if env.get("CLAUDE_CODE_REMOTE", "").lower() == "true" or env.get("CCR_AGENT_PROXY_ENABLED"):
+        sig = cloud + (["IS_SANDBOX"] if env.get("IS_SANDBOX") else [])
+        kind = "cloud"
+    elif env.get("CLAUDECODE"):
+        kind, sig = "local-claude-code", ["CLAUDECODE"]
+    else:
+        kind = "shell"
+    text = {"cloud": "Claude Code in a managed cloud container (not your machine)",
+            "local-claude-code": "Claude Code on this machine",
+            "shell": "no Claude Code signal (plain shell / CI)"}[kind]
+    return {"kind": kind, "entrypoint": entry or None, "signals": sig, "text": text}
+
+
 def token_kind(token):
     for prefix, kind in (("github_pat_", "fine-grained personal access token"), ("ghp_", "classic personal access token"),
                          ("gho_", "OAuth token (for example from `gh auth login`)"),
@@ -1786,6 +1808,11 @@ def cmd_doctor(args):
     def add(status, name, text):
         rows.append((status, name, text))
 
+    envinfo = detect_environment()
+    add(OK, "environment", "%s%s" % (envinfo["text"], (" [entrypoint=%s]" % envinfo["entrypoint"]) if envinfo["entrypoint"] else ""))
+    if envinfo["kind"] == "cloud":
+        add(WARN, "cloud note", "this environment's network proxy may refuse admin API calls (settings writes); if you see "
+            "'not permitted through this proxy', run solo.py on your own machine instead")
     v = sys.version_info
     add(OK if v >= (3, 9) else BAD, "python", "%d.%d.%d%s" % (v[0], v[1], v[2], "" if v >= (3, 9) else " (3.9+ required)"))
     for tool, required in (("git", False), ("gh", False)):
@@ -1855,7 +1882,8 @@ def cmd_doctor(args):
             add(BAD, "repo", str(e))
     code = 1 if any(r[0] == BAD for r in rows) else 0
     if args.json:
-        builtins.print(json.dumps({"checks": [{"name": n, "status": st, "message": t} for st, n, t in rows],
+        builtins.print(json.dumps({"environment": envinfo,
+                                   "checks": [{"name": n, "status": st, "message": t} for st, n, t in rows],
                                    "exit_code": code}, indent=2, ensure_ascii=False))
         return code
     say("github-solo doctor")
@@ -1978,6 +2006,12 @@ def main(argv=None):
     except SoloError as e:
         say("error: %s" % e, file=sys.stderr)
         return 2
+    except BrokenPipeError:  # e.g. `solo.py audit | head`
+        try:
+            sys.stdout.close()
+        except OSError:
+            pass
+        return 0
 
 
 if __name__ == "__main__":
