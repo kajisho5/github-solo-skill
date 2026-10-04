@@ -35,6 +35,10 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
   removed only the `solo-guard` it had created); a private repo on the free plan (6 checks ➖ with the paid-plan reason, plan contains no paid item, `apply --yes` and `restore`
   exit 0). Before/after audits of the scratch repo were identical after cleanup.
 
+- **Dogfooding (2026-10-04):** this repository itself went through `audit` -> `apply --yes` (6 default items: Dependabot alerts and security updates, private
+  vulnerability reporting, CodeQL default setup, ruleset `solo-guard`, delete-branch-on-merge) -> `audit`: 0 action needed, score 75 -> 90/100.
+  What is left is intentional: opt-in `discussions`, `pages`, `labels`; `releases` (none yet); `release-workflow` (the release-please workflow, reported on purpose).
+
 ## Next
 
 - **Live-verify the remainder:** an organization-owned repo (org policies can change the workflow-permissions endpoint's answer, e.g. 409), and `--commit-files` together
