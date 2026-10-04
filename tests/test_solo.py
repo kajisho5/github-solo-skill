@@ -51,6 +51,10 @@ class Base(unittest.TestCase):
         return [(m, p, b) for m, p, b in self.mock.writes]
 
 
+def solo_results(data):
+    return [solo.R(r["id"], r["category"], r["status"], r["message"]) for r in data["results"]]
+
+
 def solo_check_ids(case):
     _, _, st = case.audit()
     return list(st)
@@ -222,6 +226,32 @@ class VoiceboothScenario(Base):
         rc, out, _ = self.run_solo("links", "--workflow")
         self.assertIn('tags: ["v*"]', out)
         self.assertIn("app-win64.zip", out)
+
+    def test_score_profile_and_diff_text(self):
+        rc, data, st = self.audit()
+        self.assertEqual(data["score"], solo.score(solo_results(data)))
+        self.assertTrue(0 < data["score"] < 100)
+        rc, out, _ = self.run_solo("audit", self.slug, "--profile", "site", "--json")
+        d = json.loads(out)
+        self.assertEqual(d["profile"], "site")
+        by = {r["id"]: r for r in d["results"]}
+        for k in ("releases", "release-notes-config", "tag-guard"):
+            self.assertEqual(by[k]["status"], "na", k)
+        self.assertIn("profile site", by["releases"]["message"])
+        rc, out, _ = self.run_solo("apply", self.slug, "--profile", "site")
+        self.assertNotIn("] release-notes-config:", out)
+        rc, out, _ = self.run_solo("audit", self.slug)
+        self.assertIn("Score:", out)
+        rc, out, _ = self.run_solo("apply", self.slug)
+        self.assertIn("change: Dependabot alerts: off -> on", out)
+        rc, out, _ = self.run_solo("apply", self.slug, "--lang", "ja", "--only", "guardrail")
+        self.assertIn("change:", out)
+
+    def test_ci_template(self):
+        rc, out, _ = self.run_solo("ci-template")
+        self.assertEqual(rc, 0)
+        self.assertIn("SOLO_AUDIT_TOKEN", out)
+        self.assertIn("cron:", out)
 
     def test_tag_guard_is_opt_in(self):
         rc, out, _ = self.run_solo("apply", self.slug)
@@ -666,6 +696,24 @@ class Helpers(unittest.TestCase):
         self.assertEqual(got, {"npm": {"/web"}, "pip": {"/", "/svc"}, "cargo": {"/a", "/b"}})
         self.assertTrue(solo.dir_covered("/web", {"/*"}))
         self.assertFalse(solo.dir_covered("/web", {"/"}))
+
+    def test_library_profile_ignores_asset_names(self):
+        class C(object):
+            profile = "library"
+            def get(self, *a, **k):
+                return solo.Resp(200, [{"tag_name": "v1.0.0", "prerelease": False, "draft": False,
+                                        "assets": [{"name": "lib-1.0.0.tar.gz"}]}])
+            def p(self, s=""):
+                return s
+        r = solo.check_releases(C())[0]
+        self.assertEqual(r.status, "ok")
+
+    def test_ghes_graphql_url(self):
+        self.assertEqual(solo.Api("t", "https://ghe.example.com/api/v3").url_for("/graphql"),
+                         "https://ghe.example.com/api/graphql")
+        self.assertEqual(solo.Api("t", "https://api.github.com").url_for("/graphql"), "https://api.github.com/graphql")
+        self.assertEqual(solo.Api("t", "https://ghe.example.com/api/v3").url_for("/repos/a/b"),
+                         "https://ghe.example.com/api/v3/repos/a/b")
 
     def test_server_message_is_sanitized(self):
         r = solo.Resp(403, {"message": "bad\x1b[31mred\nline"})

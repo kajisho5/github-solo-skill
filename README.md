@@ -44,6 +44,7 @@ Security
 Solo development
   ✅ solo-blocker                 no approval-required rule on main
   ⚠️  guardrail                    main can be deleted / force-pushed  -> apply: guardrail
+  ⚠️  tag-guard                    release tags (v*) can be deleted / force-moved (opt-in: --only tag-guard)  -> apply: tag-guard
   ⚠️  delete-branch-on-merge       merged branches are kept  -> apply: delete-branch-on-merge
   ⚠️  discussions                  disabled (opt-in: --only discussions)  -> apply: discussions
 
@@ -60,8 +61,10 @@ Metadata
   ✅ license                      MIT
   ✅ security-policy              SECURITY.md
   ✅ social-preview               custom social preview image set
+  ⚠️  labels                       missing labels: breaking-change (opt-in: --only labels)  -> apply: labels
+  ⚠️  community-files              missing: .github/pull_request_template.md, .github/ISSUE_TEMPLATE/bug_report.md, .github/ISSUE_TEMPLATE/feature_request.md, CONTRIBUTING.md (opt-in: --only community-files)  -> apply: community-files
 
-Summary: 9 ok, 13 recommended, 0 action needed, 0 n/a
+Summary: 9 ok, 16 recommended, 0 action needed, 0 n/a   Score: 68/100
 Next: solo.py apply you/your-app   (dry run; add --yes to execute)
 ```
 
@@ -110,6 +113,7 @@ python3 scripts/solo.py apply OWNER/REPO --yes --only topics --topics audio,stre
 ```
 
 `OWNER/REPO` may be omitted inside a clone: it is read from `git remote origin`.
+`--profile app|library|site|docs` hides checks that do not apply to that kind of repo (a website has no release notes; a library does not care about asset names). Every audit prints a 0-100 score (✅ = 1, ⚠️ = ½, ❌ = 0, ➖ excluded). Dry-run plans show each change as `before -> after`. On GitHub Enterprise Server set `SOLO_API_BASE=https://HOST/api/v3` (GraphQL is routed to `/api/graphql`).
 `--lang ja` (or `SOLO_LANG=ja`, or a Japanese `$LANG`) translates the text output; `--json` is always English.
 
 | Command | What it does |
@@ -120,6 +124,7 @@ python3 scripts/solo.py apply OWNER/REPO --yes --only topics --topics audio,stre
 | `links [OWNER/REPO] [--markdown]` | stable latest-release download URLs (optionally as Markdown list items), or why they cannot work |
 | `links --workflow` | print a release workflow template (tag-triggered, uploads version-less asset copies); no API call |
 | `badges [OWNER/REPO]` | README badge Markdown: one per workflow, license, latest release, last commit, stars |
+| `ci-template` | print a weekly audit GitHub Actions workflow (needs a secret token with Administration: read); no API call |
 | `explain CHECK_ID` | print the reference entry of a check (why, API, how to undo); works offline |
 | `dependabot [OWNER/REPO]` | print a generated `dependabot.yml` (monthly, one grouped PR per ecosystem) |
 | `doctor [OWNER/REPO] [--json]` | detect where it runs (cloud container / Claude Code on your machine / plain shell), check python/git/gh, which token is used (never printed), API reachability, your access to the repo and to each admin endpoint, before anything else goes wrong |
@@ -172,8 +177,10 @@ You must be an admin of the repo for most settings. 403/404 and plan limits: [re
 # Skills CLI (Claude Code, Cursor, Codex, ...)
 npx skills add kajisho5/github-solo-skill
 
-# or clone into your agent's skills directory (Claude Code shown)
-git clone https://github.com/kajisho5/github-solo-skill ~/.claude/skills/github-solo
+# or clone into your agent's skills directory
+git clone https://github.com/kajisho5/github-solo-skill ~/.claude/skills/github-solo   # Claude Code
+git clone https://github.com/kajisho5/github-solo-skill ~/.cursor/skills/github-solo   # Cursor
+git clone https://github.com/kajisho5/github-solo-skill ~/.agents/skills/github-solo   # Codex (Cursor reads this too)
 ```
 
 As a Claude Code plugin (marketplace hosted in this repo):

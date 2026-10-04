@@ -76,6 +76,8 @@ while Claude Code on the user's own machine can run `apply --yes` directly. Dete
 
 ## Other subcommands
 
+- `SOLO audit --profile app|library|site|docs` hides checks that do not fit the kind of repo; ask the user what the repo is.
+  Audits print a 0-100 score. `SOLO ci-template` prints a weekly audit workflow. GHES: `SOLO_API_BASE=https://HOST/api/v3`.
 - `SOLO explain CHECK_ID`: prints why/API/undo of one check (offline). `SOLO badges OWNER/REPO`: README badge Markdown.
   `audit --quiet --ignore a,b --fail-on warn` for CI. `SOLO links --workflow`: release workflow template (version-less assets).
 - `SOLO restore OWNER/REPO` (dry run) / `--yes`: reverts what the last `apply --yes` changed, using the snapshot it saved.

@@ -99,7 +99,7 @@ JA = [
     ("github-solo apply:", "github-solo 適用:"),
     ("(dry run)", "(ドライラン)"), ("(executing)", "(実行)"),
     ("default branch:", "デフォルトブランチ:"), ("(public,", "(公開,"), ("(private,", "(非公開,"),
-    ("Summary: ", "サマリー: "), (" ok, ", " OK, "), (" recommended, ", " 推奨, "),
+    ("Summary: ", "サマリー: "), ("Score:", "スコア:"), (" ok, ", " OK, "), (" recommended, ", " 推奨, "),
     (" action needed, ", " 要対応, "), (" n/a", " 対象外"),
     ("Action needed items are never changed automatically; follow the fix lines above.",
      "要対応の項目は自動では変更しません。上に表示した対処コマンドを参照してください。"),
@@ -255,8 +255,14 @@ class Api(object):
         self.base = (base or os.environ.get("SOLO_API_BASE")
                      or "https://api.github.com").rstrip("/")
 
+    def url_for(self, path):
+        """GraphQL lives at <host>/api/graphql on GitHub Enterprise Server (REST base <host>/api/v3)."""
+        if path == "/graphql" and self.base.endswith("/api/v3"):
+            return self.base[:-len("/v3")] + "/graphql"
+        return self.base + path
+
     def request(self, method, path, body=None, params=None):
-        url = self.base + path
+        url = self.url_for(path)
         if params:
             url += "?" + urllib.parse.urlencode(params)
         data = None
@@ -349,6 +355,7 @@ class Ctx(object):
         self._cache = {}
         self.state = {}
         self.release_risk = []  # [(workflow path, [indicators], strong)]
+        self.profile = "app"
         self.log = []
         self.undo = []
         self._info = None
@@ -1238,6 +1245,8 @@ def check_releases(ctx):
     top = latest[0]
     assets = [a.get("name", "") for a in top.get("assets", [])]
     vers = [a for a in assets if versioned_asset(a, top.get("tag_name", ""))]
+    if ctx.profile == "library":
+        return [R(id, DIST, OK, "latest is %s (profile library: asset names do not matter)" % top.get("tag_name"))]
     if assets and len(vers) == len(assets):
         return [R(id, DIST, WARN,
                   "latest is %s but every asset name contains a version, so a fixed /latest/download/ URL cannot work"
@@ -1340,11 +1349,32 @@ CHECKS = [check_alerts, check_security_updates, check_secret_scanning, check_pvr
           check_release_notes, check_meta, check_labels, check_community_files]
 
 
+PROFILES = ["app", "library", "site", "docs"]
+# checks that make no sense for a kind of repo are shown as n/a instead of nagging
+PROFILE_NA = {
+    "site": {"releases": "a website is not released as downloads", "release-notes-config": "a website has no release notes",
+             "tag-guard": "a website has no release tags"},
+    "docs": {"releases": "a docs repo is not released as downloads", "release-notes-config": "a docs repo has no release notes",
+             "tag-guard": "a docs repo has no release tags"},
+}
+
+
 def run_checks(ctx):
     results = []
     for fn in CHECKS:
         results.extend(fn(ctx))
+    skip = PROFILE_NA.get(ctx.profile, {})
+    for r in results:
+        if r.id in skip and r.status in (WARN, OK):
+            r.status, r.msg, r.actionable = NA, "profile %s: %s" % (ctx.profile, skip[r.id]), False
     return results
+
+
+def score(results):
+    """0-100: ok = 1 point, recommended = half, action needed = 0, n/a excluded."""
+    s = summarize(results)
+    n = s[OK] + s[WARN] + s[BAD]
+    return 100 if n == 0 else int(round(100.0 * (s[OK] + 0.5 * s[WARN]) / n))
 
 
 def summarize(results):
@@ -1369,7 +1399,8 @@ def print_audit(ctx, results, quiet=False):
             for d in r.details:
                 say("       %s" % d)
     s = summarize(results)
-    say("\nSummary: %d ok, %d recommended, %d action needed, %d n/a" % (s[OK], s[WARN], s[BAD], s[NA]))
+    say("\nSummary: %d ok, %d recommended, %d action needed, %d n/a   Score: %d/100" % (
+        s[OK], s[WARN], s[BAD], s[NA], score(results)))
     if s[BAD]:
         say("Action needed items are never changed automatically; follow the fix lines above.")
     elif any(r.actionable for r in results):
@@ -1555,6 +1586,19 @@ def file_mode(ctx, action, opts):
     return "skip", "not a clone of this repo: run inside a clone, or pass --commit-files"
 
 
+DIFF_TEXT = {
+    "dependabot-alerts": "Dependabot alerts: off -> on",
+    "dependabot-security-updates": "Dependabot security updates: off -> on",
+    "secret-scanning": "secret scanning: off -> on", "push-protection": "push protection: off -> on",
+    "private-vuln-reporting": "private vulnerability reporting: off -> on",
+    "codeql": "code scanning: not configured -> default setup",
+    "guardrail": "default branch: deletable / force-pushable -> protected (no PR required)",
+    "tag-guard": "v* tags: deletable / movable -> protected",
+    "delete-branch-on-merge": "delete branch on merge: off -> on",
+    "workflow-permissions": "default GITHUB_TOKEN: write -> read", "discussions": "Discussions: off -> on",
+}
+
+
 def describe(action, ctx, opts):
     if action.kind == "api":
         b = action.body(ctx.state) if callable(action.body) else action.body
@@ -1562,7 +1606,9 @@ def describe(action, ctx, opts):
         if action.id == "pages" and callable(action.body):
             b = action.body({})
             body = " " + json.dumps(b, separators=(",", ":")) + " (URL from the Pages response)"
-        return "%s %s%s\n      %s" % (action.method, action.path, body, action.desc)
+        diff = DIFF_TEXT.get(action.id)
+        return "%s %s%s\n      %s%s" % (action.method, action.path, body, action.desc,
+                                       ("\n      change: " + diff) if diff else "")
     if action.kind == "file":
         mode, text = file_mode(ctx, action, opts)
         return "%s\n      %s%s" % (action.desc, "will skip: " if mode == "skip" else "", text)
@@ -1749,6 +1795,7 @@ def _apply(args):
     only = split_ids(args.only, "--only") if args.only else None
     skip = split_ids(args.skip, "--skip") if args.skip else []
     ctx = Ctx(Api(token), owner, repo, local)
+    ctx.profile = getattr(args, "profile", None) or "app"
     results = run_checks(ctx)
     selected = select_results(results, only, skip)
 
@@ -1821,7 +1868,9 @@ def make_ctx(args):
     token = get_token()
     if not token:
         raise SoloError("no token: set GH_TOKEN / GITHUB_TOKEN or run `gh auth login`")
-    return Ctx(Api(token), owner, repo, local)
+    ctx = Ctx(Api(token), owner, repo, local)
+    ctx.profile = getattr(args, "profile", None) or "app"
+    return ctx
 
 
 def _gh_escape(t):
@@ -1855,7 +1904,7 @@ def cmd_audit(args):
     if args.json:
         builtins.print(json.dumps({"repo": ctx.slug, "private": ctx.private, "default_branch": ctx.branch,
                                    "results": [r.to_json() for r in results], "summary": s,
-                                   "exit_code": code}, indent=2, ensure_ascii=False))
+                                   "score": score(results), "profile": ctx.profile, "exit_code": code}, indent=2, ensure_ascii=False))
     else:
         print_audit(ctx, results, quiet=args.quiet)
         if args.github_annotations:
@@ -1899,8 +1948,9 @@ def cmd_audit_all(args):
             continue
         try:
             ctx = Ctx(api, item.get("owner", {}).get("login", owner), name)
+            ctx.profile = getattr(args, "profile", None) or "app"
             res = run_checks(ctx)
-            rows.append({"repo": ctx.slug, "private": ctx.private, "summary": summarize(res),
+            rows.append({"repo": ctx.slug, "private": ctx.private, "summary": summarize(res), "score": score(res),
                          "bad": [r.id for r in res if r.status == BAD],
                          "warn": [r.id for r in res if r.status == WARN]})
         except SoloError as e:
@@ -1920,8 +1970,8 @@ def cmd_audit_all(args):
         st = BAD if r["bad"] else (WARN if r["warn"] else OK)
         sm = r["summary"]
         extra = ("  action needed: " + ", ".join(r["bad"])) if r["bad"] else ""
-        say("  %s %-*s  %-7s %d ok, %d recommended, %d action needed, %d n/a%s" % (
-            ICON[st], width, r["repo"], "private" if r["private"] else "public",
+        say("  %s %-*s  %-7s %3d/100  %d ok, %d recommended, %d action needed, %d n/a%s" % (
+            ICON[st], width, r["repo"], "private" if r["private"] else "public", r.get("score", 0),
             sm[OK], sm[WARN], sm[BAD], sm[NA], extra))
     if skipped:
         say("\nSkipped: %s" % ", ".join(skipped))
@@ -2082,6 +2132,37 @@ def cmd_explain(args):
     return 0
 
 
+CI_TEMPLATE = """# Weekly settings check for this repo. Fails (and annotates the run) when something needs action.
+# Needs a secret SOLO_AUDIT_TOKEN: a fine-grained token for THIS repo with Administration: read, Contents: read, Metadata: read
+# (the built-in GITHUB_TOKEN cannot read most security settings). Pin the download to a commit SHA you reviewed.
+name: github-solo audit
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@<full-commit-sha>   # vX.Y.Z
+        with:
+          python-version: "3.13"
+      - name: Fetch github-solo (pinned)
+        run: curl -fsSL https://raw.githubusercontent.com/kajisho5/github-solo-skill/<full-commit-sha>/scripts/solo.py -o solo.py
+      - name: Audit
+        env:
+          GH_TOKEN: ${{ secrets.SOLO_AUDIT_TOKEN }}
+        run: python3 solo.py audit ${{ github.repository }} --github-annotations --quiet
+"""
+
+
+def cmd_ci_template(args):
+    say(CI_TEMPLATE.rstrip())
+    return 0
+
+
 def cmd_badges(args):
     ctx = make_ctx(args)
     base = "https://github.com/%s" % ctx.slug
@@ -2162,6 +2243,8 @@ def build_parser():
     a = sub.add_parser("audit", help="diagnose the repo")
     a.add_argument("repo", nargs="?", help="OWNER/REPO (default: git remote origin)")
     a.add_argument("--json", action="store_true", help="machine-readable output")
+    a.add_argument("--profile", choices=PROFILES,
+                   help="kind of repo: app (default), library, site, docs; hides checks that do not apply")
     a.add_argument("--quiet", action="store_true", help="hide ✅ and ➖ rows")
     a.add_argument("--ignore", help="comma-separated check ids to leave out (also from the exit code)")
     a.add_argument("--fail-on", choices=["bad", "warn"], default="bad",
@@ -2179,6 +2262,7 @@ def build_parser():
     ap.add_argument("--commit-files", action="store_true",
                     help="commit generated files via the Contents API when not in a clone")
     ap.add_argument("--json", action="store_true", help="machine-readable plan and execution log")
+    ap.add_argument("--profile", choices=PROFILES, help="kind of repo: app (default), library, site, docs")
     ap.add_argument("--accept-release-risk", action="store_true",
                     help="allow --commit-files even if a workflow may create a release on push")
     li = sub.add_parser("links", help="print fixed latest-release download URLs")
@@ -2190,6 +2274,7 @@ def build_parser():
     d.add_argument("repo", nargs="?")
     ex = sub.add_parser("explain", help="print the reference entry (why, API, undo) of one check")
     ex.add_argument("check_id")
+    ci = sub.add_parser("ci-template", help="print a weekly audit GitHub Actions workflow (no API call)")
     bd = sub.add_parser("badges", help="print README badge Markdown for the repo")
     bd.add_argument("repo", nargs="?")
     dr = sub.add_parser("doctor", help="check token, permissions and connectivity before you start")
@@ -2199,7 +2284,7 @@ def build_parser():
     rs.add_argument("repo", nargs="?")
     rs.add_argument("--yes", action="store_true", help="execute (default is a dry run)")
     rs.add_argument("--snapshot", help="snapshot file to use (default: the newest for this repo)")
-    for sp in (a, ap, li, d, dr, rs, ex, bd):
+    for sp in (a, ap, li, d, dr, rs, ex, bd, ci):
         sp.add_argument("--lang", choices=["en", "ja"], help="output language of the text output (default: SOLO_LANG or $LANG)")
     return p
 
@@ -2216,7 +2301,7 @@ def main(argv=None):
     try:
         return {"audit": cmd_audit, "apply": cmd_apply, "links": cmd_links,
                 "dependabot": cmd_dependabot, "doctor": cmd_doctor,
-                "explain": cmd_explain, "badges": cmd_badges,
+                "explain": cmd_explain, "badges": cmd_badges, "ci-template": cmd_ci_template,
                 "restore": cmd_restore}[args.cmd](args)
     except SoloError as e:
         say("error: %s" % e, file=sys.stderr)

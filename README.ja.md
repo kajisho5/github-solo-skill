@@ -27,42 +27,45 @@ npx skills add kajisho5/github-solo-skill
 エージェントに「リポジトリの設定を確認して」と頼む（またはスクリプトを直接実行する）と、現状を診断し、足りないものだけを設定します。
 
 ```text
-github-solo audit: you/your-app (public, default branch: main)
+github-solo 診断: you/your-app (公開, デフォルトブランチ: main)
 
-Security
-  ⚠️  dependabot-alerts            disabled  -> apply: dependabot-alerts
-  ⚠️  dependabot-security-updates  disabled  -> apply: dependabot-security-updates
-  ✅ secret-scanning              enabled
-  ✅ push-protection              enabled
-  ⚠️  private-vuln-reporting       disabled  -> apply: private-vuln-reporting
-  ⚠️  codeql                       default setup not configured (c-cpp)  -> apply: codeql
-  ⚠️  dependabot-config            missing; detected: github-actions  -> apply: dependabot-config
-       bundled code under third_party/ is not tracked by Dependabot (it only reads real manifests outside those dirs)
-  ✅ actions-pinning              all actions pinned to a commit SHA
-  ⚠️  workflow-permissions         default GITHUB_TOKEN permission is write (opt-in fix; may break workflows that rely on it)  -> apply: workflow-permissions
+セキュリティ
+  ⚠️  dependabot-alerts            無効  -> apply: dependabot-alerts
+  ⚠️  dependabot-security-updates  無効  -> apply: dependabot-security-updates
+  ✅ secret-scanning              有効
+  ✅ push-protection              有効
+  ⚠️  private-vuln-reporting       無効  -> apply: private-vuln-reporting
+  ⚠️  codeql                       default setup 未設定 (c-cpp)  -> apply: codeql
+  ⚠️  dependabot-config            未作成。検出: github-actions  -> apply: dependabot-config
+       同梱コード third_party/ は Dependabot の追跡対象外 （それ以外の場所の実マニフェストのみ対象）
+  ✅ actions-pinning              すべての action がコミット SHA で固定済み
+  ⚠️  workflow-permissions         GITHUB_TOKEN のデフォルト権限が write （任意の修正。write に依存するワークフローが壊れる可能性）  -> apply: workflow-permissions
 
-Solo development
-  ✅ solo-blocker                 no approval-required rule on main
-  ⚠️  guardrail                    main can be deleted / force-pushed  -> apply: guardrail
-  ⚠️  delete-branch-on-merge       merged branches are kept  -> apply: delete-branch-on-merge
-  ⚠️  discussions                  disabled (opt-in: --only discussions)  -> apply: discussions
+1人開発
+  ✅ solo-blocker                 承認必須ルールなし: main
+  ⚠️  guardrail                    main は削除 / force push できます  -> apply: guardrail
+  ⚠️  tag-guard                    リリースタグ (v*) を削除 / 移動できます （任意: --only tag-guard）  -> apply: tag-guard
+  ⚠️  delete-branch-on-merge       マージ済みブランチが残る  -> apply: delete-branch-on-merge
+  ⚠️  discussions                  無効（任意: --only discussions）  -> apply: discussions
 
-Distribution
-  ⚠️  release-workflow             a push to main will likely create a release (.github/workflows/release.yml) - committing files there can trigger it
+配布
+  ⚠️  release-workflow             push: main リリースを作る可能性が高い (.github/workflows/release.yml) - ここへファイルをコミットすると発火しうる
        .github/workflows/release.yml (gh release create)
-  ⚠️  pages                        not set up; would publish / of main (no index.html: the README is rendered as the top page) (opt-in: --only pages)  -> apply: pages
-  ⚠️  releases                     2 release(s), all pre-releases: /releases/latest returns 404 (see: solo.py links)
-  ⚠️  release-notes-config         .github/release.yml missing  -> apply: release-notes-config
+  ⚠️  pages                        未設定。公開予定: / of main (index.html なし: README がトップページとして表示されます) （任意: --only pages）  -> apply: pages
+  ⚠️  releases                     2 件のリリース, すべて Pre-release: /releases/latest は 404 になります （solo.py links 参照）
+  ⚠️  release-notes-config         .github/release.yml がありません  -> apply: release-notes-config
 
-Metadata
+メタ情報
   ✅ description                  set
   ✅ topics                       topics: audio
   ✅ license                      MIT
   ✅ security-policy              SECURITY.md
-  ✅ social-preview               custom social preview image set
+  ✅ social-preview               social preview 設定済み
+  ⚠️  labels                       missing labels: breaking-change (opt-in: --only labels)  -> apply: labels
+  ⚠️  community-files              missing: .github/pull_request_template.md, .github/ISSUE_TEMPLATE/bug_report.md, .github/ISSUE_TEMPLATE/feature_request.md, CONTRIBUTING.md (opt-in: --only community-files)  -> apply: community-files
 
-Summary: 9 ok, 13 recommended, 0 action needed, 0 n/a
-Next: solo.py apply you/your-app   (dry run; add --yes to execute)
+サマリー: 9 OK, 16 推奨, 0 要対応, 0 対象外   スコア: 68/100
+次の手順: solo.py apply you/your-app   （ドライラン。実行するには --yes）
 ```
 
 *（公開 C++ アプリを想定したテスト用 fixture に対する `solo.py audit` の実際の出力。`apply` はまず計画を表示し、`--yes` を付けたときだけ書き込みます。）*
@@ -111,6 +114,7 @@ python3 scripts/solo.py apply OWNER/REPO --yes --only topics --topics audio,stre
 ```
 
 clone の中では `OWNER/REPO` を省略でき、`git remote origin` から推定します。
+`--profile app|library|site|docs` でリポの種類に合わせて、当てはまらないチェックを非表示にします（サイトにリリースノートは不要、ライブラリはアセット名を気にしない、など）。audit は毎回 0〜100 点のスコアを表示します（✅=1、⚠️=½、❌=0、➖は除外）。ドライランの計画は各変更を `変更前 -> 変更後` で表示します。GitHub Enterprise Server は `SOLO_API_BASE=https://HOST/api/v3` を指定します（GraphQL は `/api/graphql` へ向けます）。
 `--lang ja`（または `SOLO_LANG=ja`、日本語の `$LANG`）でテキスト出力を日本語にします。`--json` は常に英語です。
 
 | コマンド | 内容 |
@@ -121,6 +125,7 @@ clone の中では `OWNER/REPO` を省略でき、`git remote origin` から推�
 | `links [OWNER/REPO] [--markdown]` | 最新版の固定ダウンロード URL（`--markdown` で Markdown のリスト形式。使えない場合は理由） |
 | `links --workflow` | リリースワークフローの雛形を出力（タグで発火、バージョン無しアセットも同時アップロード）。API 呼び出しなし |
 | `badges [OWNER/REPO]` | README 用バッジの Markdown（ワークフローごと、license、最新リリース、last commit、stars） |
+| `ci-template` | 週1回の audit を行う GitHub Actions ワークフローの雛形を出力（Administration: read のトークンを secret に登録）。API 呼び出しなし |
 | `explain CHECK_ID` | チェック1件の説明（理由・API・戻し方）を表示。オフラインで動作 |
 | `dependabot [OWNER/REPO]` | `dependabot.yml` を生成して標準出力へ（monthly、エコシステムごとに1 PR へ集約） |
 | `doctor [OWNER/REPO] [--json]` | 実行場所（クラウドコンテナ / 手元の Claude Code / 通常のシェル）の判定、python/git/gh の有無、使われるトークン（値は表示しない）、API への到達、リポジトリと各管理系エンドポイントへのアクセスを事前に確認 |
@@ -173,8 +178,10 @@ clone の中では `OWNER/REPO` を省略でき、`git remote origin` から推�
 # Skills CLI（Claude Code、Cursor、Codex など）
 npx skills add kajisho5/github-solo-skill
 
-# またはエージェントの skills ディレクトリへ clone（Claude Code の例）
-git clone https://github.com/kajisho5/github-solo-skill ~/.claude/skills/github-solo
+# またはエージェントの skills ディレクトリへ clone
+git clone https://github.com/kajisho5/github-solo-skill ~/.claude/skills/github-solo   # Claude Code
+git clone https://github.com/kajisho5/github-solo-skill ~/.cursor/skills/github-solo   # Cursor
+git clone https://github.com/kajisho5/github-solo-skill ~/.agents/skills/github-solo   # Codex（Cursor もここを読みます）
 ```
 
 Claude Code plugin として（このリポジトリが marketplace を兼ねます）：

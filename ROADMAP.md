@@ -12,6 +12,7 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 - Per-directory coverage of an existing `dependabot.yml`; release detection through reusable workflows and `refs/tags` conditions.
 - Opt-in `tag-guard` ruleset for `v*` tags.
 - `doctor`, and `restore` (every `apply --yes` saves an undo snapshot).
+- `--profile`, 0-100 score, before->after in dry-run plans, `ci-template`, GitHub Enterprise Server GraphQL routing (unit-tested URL mapping, not run against a real GHES).
 - `explain`, `badges`, `links --workflow`, `audit --quiet / --ignore / --fail-on`; opt-in `labels` and `community-files`.
 - `tests/live_check.py`: runs every write against a real scratch repo, then reverts and compares (smoke-tested against the mock).
 
@@ -30,7 +31,7 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 
 ## Maybe
 
-- GitHub Enterprise Server base URL handling for GraphQL.
+- Run against a real GitHub Enterprise Server.
 
 ## Deliberately out of scope
 
