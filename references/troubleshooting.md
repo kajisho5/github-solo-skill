@@ -43,6 +43,15 @@ If the workflow-file path `.github/workflows/*` is ever written (this tool does 
 Notes: the fine-grained mapping comes from the docs page above and was summarized, not tested against every endpoint.
 For a read-only audit, "Read" levels suffice for everything except that some admin-only reads still return 403/404 without Administration.
 
+## Right after a change, the audit still shows the old value
+
+GitHub applies some settings with a short delay (seen live with the Actions default workflow permission: a `GET` straight after the `PUT` returned
+the old value; a second read was correct). Wait a few seconds and audit again before assuming a write failed.
+
+## Git on Windows warns "LF will be replaced by CRLF"
+
+The generated files use LF. With `core.autocrlf=true`, `git add` converts them to CRLF in the working copy and that warning is harmless.
+
 ## 404 on a write
 
 For admin endpoints GitHub answers 404 (not 403) when the token cannot see/administer the repo, and when a feature does not exist for

@@ -21,12 +21,17 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
   `dependabot-security-updates`, `discussions`, `guardrail` (ruleset), `labels`, `pages`, `private-vuln-reporting`, `tag-guard` (ruleset,
   `refs/tags/v*`), `topics`; an independent before/after audit comparison of all 25 checks was identical. This also confirms the ruleset
   list `target` field and the `refs/tags/v*` pattern.
+- **Verified live, second round (same repo, same day):** `secret-scanning` + `push-protection` (disabled via API -> warn -> `apply` -> ok);
+  `workflow-permissions` (write -> warn -> `apply` -> ok -> `restore` -> warn); `solo-blocker` with a real classic protection (1 required approval +
+  `enforce_admins`): audit showed ❌ with exit code 1 and the printed fix commands, and `apply --yes` left the protection untouched (also seen:
+  `guardrail` counts classic protection as satisfied); generated files written inside a clone (`release.yml`, `SECURITY.md`, PR / issue templates,
+  `CONTRIBUTING.md`: second run "No changes needed", `SECURITY.md` carries the right advisory URL), pushed, and the three checks turned ✅.
+  A repo without manifests correctly reports `dependabot-config` as ➖.
 
 ## Next
 
-- **Live-verify what `live_check.py` did not cover:** `secret-scanning` / `push-protection` (already on in a fresh public repo, so nothing was applied),
-  `workflow-permissions` (already `read`), `dependabot-config` / `release-notes-config` / `security-policy` / `community-files` (file items need a clone;
-  `--commit-files` was not run live), private repos on a free plan, and `solo-blocker` with a real approval rule.
+- **Live-verify what is still open:** `--commit-files` (Contents API commit), generating `dependabot.yml` for a repo that has manifests,
+  `solo-blocker` through a ruleset (only classic protection was tried), and private repos on a free plan.
 - **Fine-grained token matrix.** Confirm the minimum permission per endpoint by running each call with a token that has only that permission
   (the table in the README is taken from the GitHub docs, not measured).
 - **Dependabot manifest names.** The ecosystem names come from Dependabot's options reference. The manifest file names
