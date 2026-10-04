@@ -47,13 +47,16 @@ DEFAULT_APPLY = [
     "guardrail", "delete-branch-on-merge", "release-notes-config",
     "security-policy",
 ]
-OPT_IN_APPLY = ["workflow-permissions", "discussions", "pages", "topics", "tag-guard"]
+OPT_IN_APPLY = ["workflow-permissions", "discussions", "pages", "topics", "tag-guard", "labels",
+                "community-files"]
 OPT_IN_WHY = {
     "workflow-permissions": "can break existing workflows that rely on a write token",
     "discussions": "changes the public face of the repo",
     "pages": "publishes a public website",
     "topics": "changes the public face of the repo (needs --topics)",
     "tag-guard": "blocks deleting / force-moving v* tags; may break workflows that re-create tags",
+    "labels": "adds labels the generated release.yml categories use (visible in the issue tracker)",
+    "community-files": "adds issue / PR templates and CONTRIBUTING.md (public-facing once pushed)",
 }
 ALL_APPLY = DEFAULT_APPLY + OPT_IN_APPLY
 
@@ -724,6 +727,93 @@ changelog:
 """
 
 
+WANTED_LABELS = [("breaking-change", "b60205", "Incompatible change"), ("enhancement", "a2eeef", "New feature or request"),
+                 ("bug", "d73a4a", "Something is not working")]
+
+PR_TEMPLATE = """## What and why
+
+<!-- One or two sentences. Link the issue if there is one: Fixes #123 -->
+
+## How it was tested
+
+<!-- Commands you ran, or "not applicable". -->
+
+## Checklist
+
+- [ ] Docs / README updated if behavior changed
+- [ ] Tests added or updated
+"""
+
+BUG_TEMPLATE = """---
+name: Bug report
+about: Something does not work as expected
+labels: bug
+---
+
+**What happened**
+
+**What you expected**
+
+**Steps to reproduce**
+1.
+
+**Environment** (OS, version, how you installed it)
+"""
+
+FEATURE_TEMPLATE = """---
+name: Feature request
+about: Suggest an improvement
+labels: enhancement
+---
+
+**The problem you want solved**
+
+**What you would like**
+
+**Alternatives you considered**
+"""
+
+
+def contributing_md(repo):
+    return """# Contributing to %s
+
+Thanks for helping! This is a small project, so keep it simple:
+
+1. Open an issue first for anything bigger than a typo or a one-line fix, so we can agree on the direction.
+2. Fork, create a branch, make your change, and open a pull request describing what and why.
+3. Add or update tests when behavior changes, and run them before you push.
+
+Security problems: please follow SECURITY.md instead of opening a public issue.
+""" % repo
+
+
+RELEASE_WORKFLOW_TEMPLATE = """# Publishes a normal (non pre-) release when you push a tag like v1.2.3, with a version-less copy of each asset
+# so that https://github.com/OWNER/REPO/releases/latest/download/app-win64.zip never changes.
+# Replace the Build step and the file names. Pin each `uses:` to a full commit SHA (github-solo flags unpinned ones).
+name: release
+on:
+  push:
+    tags: ["v*"]          # tags only: pushing to the default branch never releases
+permissions:
+  contents: write         # needed to create the release
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@<full-commit-sha>   # vX.Y.Z
+      - name: Build
+        run: ./build.sh                             # must produce dist/app-<version>-win64.zip
+      - name: Add version-less copies
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          cp "dist/app-$VER-win64.zip" dist/app-win64.zip
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.zip --title "$GITHUB_REF_NAME" --generate-notes
+"""
+
+
 def security_md(owner, repo):
     return """# Security Policy
 
@@ -1163,6 +1253,52 @@ def check_release_notes(ctx):
     return [R(id, DIST, WARN, ".github/release.yml missing", apply=id, actionable=True)]
 
 
+def check_labels(ctx):
+    id = "labels"
+    r = ctx.get(ctx.p("/labels"), per_page=100)
+    if not r.ok or not isinstance(r.data, list):
+        return [unreadable(id, META, r, apply=id)]
+    have = {x.get("name", "").lower() for x in r.data}
+    missing = [w for w in WANTED_LABELS if w[0] not in have]
+    if not missing:
+        return [R(id, META, OK, "labels used by release.yml exist")]
+    return [R(id, META, WARN, "missing labels: %s (opt-in: --only labels)" % ", ".join(m[0] for m in missing),
+              apply=id, actionable=True, data={"missing": missing})]
+
+
+COMMUNITY_FILES = [
+    ("pr-template", ".github/pull_request_template.md",
+     (".github/pull_request_template.md", "pull_request_template.md", "docs/pull_request_template.md",
+      ".github/PULL_REQUEST_TEMPLATE.md", "PULL_REQUEST_TEMPLATE.md", "docs/PULL_REQUEST_TEMPLATE.md")),
+    ("bug-template", ".github/ISSUE_TEMPLATE/bug_report.md", ()),
+    ("feature-template", ".github/ISSUE_TEMPLATE/feature_request.md", ()),
+    ("contributing", "CONTRIBUTING.md", ("CONTRIBUTING.md", ".github/CONTRIBUTING.md", "docs/CONTRIBUTING.md")),
+]
+
+
+def community_missing(ctx):
+    paths = ctx.paths
+    has_issue_tpl = any(p.startswith(".github/ISSUE_TEMPLATE/") for p in paths) or \
+        ".github/ISSUE_TEMPLATE.md" in paths or "ISSUE_TEMPLATE.md" in paths
+    out = []
+    for key, target, aliases in COMMUNITY_FILES:
+        if key in ("bug-template", "feature-template"):
+            if not has_issue_tpl:
+                out.append((key, target))
+        elif not any(a in paths for a in aliases):
+            out.append((key, target))
+    return out
+
+
+def check_community_files(ctx):
+    id = "community-files"
+    missing = community_missing(ctx)
+    if not missing:
+        return [R(id, META, OK, "PR template, issue templates and CONTRIBUTING present")]
+    return [R(id, META, WARN, "missing: %s (opt-in: --only community-files)" % ", ".join(t for _, t in missing),
+              apply=id, actionable=True, data={"missing": missing})]
+
+
 def check_meta(ctx):
     out = []
     i = ctx.info
@@ -1201,7 +1337,7 @@ CHECKS = [check_alerts, check_security_updates, check_secret_scanning, check_pvr
           check_codeql, check_dependabot_config, check_pinning_and_release,
           check_workflow_permissions, check_solo_blocker, check_guardrail, check_tag_guard,
           check_delete_branch, check_discussions, check_pages, check_releases,
-          check_release_notes, check_meta]
+          check_release_notes, check_meta, check_labels, check_community_files]
 
 
 def run_checks(ctx):
@@ -1218,12 +1354,12 @@ def summarize(results):
     return s
 
 
-def print_audit(ctx, results):
+def print_audit(ctx, results, quiet=False):
     vis = "private" if ctx.private else "public"
     say("github-solo audit: %s (%s, default branch: %s)" % (ctx.slug, vis, ctx.branch))
     width = max(len(r.id) for r in results)
     for cat in CATEGORIES:
-        rows = [r for r in results if r.cat == cat]
+        rows = [r for r in results if r.cat == cat and not (quiet and r.status in (OK, NA))]
         if not rows:
             continue
         say("\n%s" % cat)
@@ -1360,6 +1496,17 @@ def plan_for(ctx, res, opts):
                 "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}]}
         return [Action(id, "api", "create ruleset solo-tag-guard: block deleting / force-moving v* tags", "POST",
                        o.p("/rulesets"), body, undo=_undo_ruleset(o))]
+    if id == "labels":
+        acts = []
+        for name, color, desc in res.data["missing"]:
+            acts.append(Action(id, "api", "create label %s" % name, "POST", o.p("/labels"),
+                               {"name": name, "color": color, "description": desc},
+                               undo=_undo("DELETE", o.p("/labels/%s" % urllib.parse.quote(name)))))
+        return acts
+    if id == "community-files":
+        contents = {"pr-template": PR_TEMPLATE, "bug-template": BUG_TEMPLATE, "feature-template": FEATURE_TEMPLATE,
+                    "contributing": contributing_md(o.repo)}
+        return [file_action(o, id, target, contents[key], "create %s" % target) for key, target in res.data["missing"]]
     if id == "topics":
         names = validate_topics(opts.topics)
         return [Action(id, "api", "set topics: %s" % ", ".join(names), "PUT", o.p("/topics"), {"names": names},
@@ -1382,6 +1529,10 @@ def select_results(results, only, skip):
         sel.append(r)
     sel.sort(key=lambda r: ALL_APPLY.index(r.apply))
     return sel
+
+
+def split_csv(s):
+    return [x.strip() for x in (s or "").split(",") if x.strip()]
 
 
 def split_ids(s, what):
@@ -1692,14 +1843,21 @@ def cmd_audit(args):
         return cmd_audit_all(args)
     ctx = make_ctx(args)
     results = run_checks(ctx)
+    ignore = set(split_csv(args.ignore))
+    if ignore:
+        known = {r.id for r in results}
+        unknown = sorted(ignore - known)
+        if unknown:
+            raise SoloError("unknown check id(s) in --ignore: %s (valid: %s)" % (", ".join(unknown), ", ".join(sorted(known))))
+        results = [r for r in results if r.id not in ignore]
     s = summarize(results)
-    code = 1 if s[BAD] else 0
+    code = 1 if s[BAD] or (args.fail_on == "warn" and s[WARN]) else 0
     if args.json:
         builtins.print(json.dumps({"repo": ctx.slug, "private": ctx.private, "default_branch": ctx.branch,
                                    "results": [r.to_json() for r in results], "summary": s,
                                    "exit_code": code}, indent=2, ensure_ascii=False))
     else:
-        print_audit(ctx, results)
+        print_audit(ctx, results, quiet=args.quiet)
         if args.github_annotations:
             print_annotations(results)
     return code
@@ -1896,7 +2054,53 @@ def cmd_doctor(args):
     return code
 
 
+def cmd_explain(args):
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references", "checks.md")
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        raise SoloError("references/checks.md not found next to the script (%s)" % os.path.normpath(path))
+    wanted = args.check_id
+    start = None
+    heads = []
+    for i, line in enumerate(lines):
+        if line.startswith("### "):
+            ids = [x.strip() for x in line[4:].split("(")[0].split(",")]
+            heads.append((i, ids))
+            if wanted in ids and start is None:
+                start = i
+    if start is None:
+        known = sorted({x for _, ids in heads for x in ids})
+        raise SoloError("no such check: %s (known: %s)" % (wanted, ", ".join(known)))
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        if lines[i].startswith("## ") or lines[i].startswith("### "):
+            end = i
+            break
+    say("\n".join(lines[start:end]).rstrip())
+    return 0
+
+
+def cmd_badges(args):
+    ctx = make_ctx(args)
+    base = "https://github.com/%s" % ctx.slug
+    for wf in ctx.workflow_paths:
+        fn = os.path.basename(wf)
+        stem = os.path.splitext(fn)[0]
+        say("[![%s](%s/actions/workflows/%s/badge.svg)](%s/actions/workflows/%s)" % (stem, base, fn, base, fn))
+    if ctx.info.get("license"):
+        say("[![license](https://img.shields.io/github/license/%s)](%s)" % (ctx.slug, base + "/blob/%s/LICENSE" % ctx.branch))
+    say("[![release](https://img.shields.io/github/v/release/%s)](%s/releases/latest)" % (ctx.slug, base))
+    say("[![last commit](https://img.shields.io/github/last-commit/%s)](%s/commits/%s)" % (ctx.slug, base, ctx.branch))
+    say("[![stars](https://img.shields.io/github/stars/%s)](%s/stargazers)" % (ctx.slug, base))
+    return 0
+
+
 def cmd_links(args):
+    if args.workflow:
+        say(RELEASE_WORKFLOW_TEMPLATE.rstrip())
+        return 0
     ctx = make_ctx(args)
     rels, r = fetch_releases(ctx)
     if rels is None:
@@ -1958,6 +2162,10 @@ def build_parser():
     a = sub.add_parser("audit", help="diagnose the repo")
     a.add_argument("repo", nargs="?", help="OWNER/REPO (default: git remote origin)")
     a.add_argument("--json", action="store_true", help="machine-readable output")
+    a.add_argument("--quiet", action="store_true", help="hide ✅ and ➖ rows")
+    a.add_argument("--ignore", help="comma-separated check ids to leave out (also from the exit code)")
+    a.add_argument("--fail-on", choices=["bad", "warn"], default="bad",
+                   help="exit 1 on ❌ only (default) or also on ⚠️")
     a.add_argument("--all-repos", metavar="OWNER", help="audit every non-archived, non-fork repo of OWNER")
     a.add_argument("--github-annotations", action="store_true",
                    help="also print ::warning/::error workflow commands (for GitHub Actions)")
@@ -1975,9 +2183,15 @@ def build_parser():
                     help="allow --commit-files even if a workflow may create a release on push")
     li = sub.add_parser("links", help="print fixed latest-release download URLs")
     li.add_argument("repo", nargs="?")
+    li.add_argument("--workflow", action="store_true",
+                    help="print a release workflow template that uploads version-less asset copies (no API call)")
     li.add_argument("--markdown", action="store_true", help="print Markdown list items instead of bare URLs")
     d = sub.add_parser("dependabot", help="print a generated dependabot.yml")
     d.add_argument("repo", nargs="?")
+    ex = sub.add_parser("explain", help="print the reference entry (why, API, undo) of one check")
+    ex.add_argument("check_id")
+    bd = sub.add_parser("badges", help="print README badge Markdown for the repo")
+    bd.add_argument("repo", nargs="?")
     dr = sub.add_parser("doctor", help="check token, permissions and connectivity before you start")
     dr.add_argument("repo", nargs="?")
     dr.add_argument("--json", action="store_true", help="machine-readable output")
@@ -1985,7 +2199,7 @@ def build_parser():
     rs.add_argument("repo", nargs="?")
     rs.add_argument("--yes", action="store_true", help="execute (default is a dry run)")
     rs.add_argument("--snapshot", help="snapshot file to use (default: the newest for this repo)")
-    for sp in (a, ap, li, d, dr, rs):
+    for sp in (a, ap, li, d, dr, rs, ex, bd):
         sp.add_argument("--lang", choices=["en", "ja"], help="output language of the text output (default: SOLO_LANG or $LANG)")
     return p
 
@@ -2002,6 +2216,7 @@ def main(argv=None):
     try:
         return {"audit": cmd_audit, "apply": cmd_apply, "links": cmd_links,
                 "dependabot": cmd_dependabot, "doctor": cmd_doctor,
+                "explain": cmd_explain, "badges": cmd_badges,
                 "restore": cmd_restore}[args.cmd](args)
     except SoloError as e:
         say("error: %s" % e, file=sys.stderr)

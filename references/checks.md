@@ -156,6 +156,16 @@ need `--only <id>`.
   (`PUT /repos/{o}/{r}/topics`, replaces all topics; lowercase, digits, hyphens, ≤50 chars, ≤20 topics).
 - `license` is never generated: choosing one is your decision (https://choosealicense.com/).
 
+### labels (opt-in)
+- Why: the generated `.github/release.yml` groups PRs by the labels `breaking-change`, `enhancement` and `bug`; without them every PR lands in "Other Changes".
+- Read: `GET /repos/{o}/{r}/labels`. Apply: `POST /repos/{o}/{r}/labels` for each missing one (name, color, description). Existing labels are never touched.
+- Undo: `DELETE /repos/{o}/{r}/labels/{name}` (`restore` does this for the labels it created).
+
+### community-files (opt-in)
+- Why: issue templates, a PR template and CONTRIBUTING.md tell contributors what you need. Shown as ✅ when a PR template, any issue template and a CONTRIBUTING file exist.
+- Generates only what is missing: `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/bug_report.md`, `.github/ISSUE_TEMPLATE/feature_request.md`, `CONTRIBUTING.md` (same file handling as the other generated files). CODE_OF_CONDUCT is not generated: pick a text you endorse (for example the Contributor Covenant).
+- Undo: delete the files.
+
 ### security-policy (default)
 - `SECURITY.md` (root, `.github/` or `docs/`) present → ✅. Otherwise a template pointing at
   `https://github.com/{o}/{r}/security/advisories/new` is generated (same file handling as above). Undo: delete the file.

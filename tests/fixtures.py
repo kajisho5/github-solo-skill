@@ -59,6 +59,7 @@ def base(name="voicebooth", private=False):
         "pages": None,
         "releases": [],
         "uses_custom_og": False,
+        "labels": ["bug", "enhancement", "documentation"],
         "free_private": private,
     }
 
@@ -118,7 +119,9 @@ def configured():
               "license": {"spdx_id": "MIT"}, "has_discussions": True, "delete_branch_on_merge": True})
     r["security_and_analysis"] = {"secret_scanning": {"status": "enabled"},
                                   "secret_scanning_push_protection": {"status": "enabled"}}
-    s["tree"] = ["README.md", "LICENSE", "SECURITY.md", "app.py", "requirements.txt",
+    s["labels"] = ["bug", "enhancement", "breaking-change"]
+    s["tree"] = ["README.md", "LICENSE", "SECURITY.md", "CONTRIBUTING.md", ".github/pull_request_template.md",
+                 ".github/ISSUE_TEMPLATE/bug_report.md", "app.py", "requirements.txt",
                  ".github/dependabot.yml", ".github/release.yml", ".github/workflows/ci.yml"]
     s["files"] = {
         ".github/dependabot.yml": 'version: 2\nupdates:\n  - package-ecosystem: "github-actions"\n'

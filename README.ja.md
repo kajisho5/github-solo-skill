@@ -115,10 +115,13 @@ clone の中では `OWNER/REPO` を省略でき、`git remote origin` から推�
 
 | コマンド | 内容 |
 |---|---|
-| `audit [OWNER/REPO] [--json] [--github-annotations]` | 診断。❌ があれば終了コード 1。`--github-annotations` は CI 用に `::warning` / `::error` も出力 |
+| `audit [OWNER/REPO] [--json] [--quiet] [--ignore ids] [--fail-on warn] [--github-annotations]` | 診断。❌ があれば終了コード 1（`--fail-on warn` で ⚠️ でも 1）。`--quiet` は ✅/➖ を非表示、`--ignore` は指定チェックを除外、`--github-annotations` は CI 用に `::warning` / `::error` も出力 |
 | `audit --all-repos OWNER [--json]` | オーナーの全リポ（アーカイブ・fork 除く）を1行ずつ要約 |
 | `apply [OWNER/REPO] [--yes] [--only ids] [--skip ids] [--pages-path / \| /docs] [--topics a,b] [--commit-files] [--accept-release-risk] [--json]` | ドライランで計画表示、`--yes` で実行。`--json` は計画と実行ログを出力 |
 | `links [OWNER/REPO] [--markdown]` | 最新版の固定ダウンロード URL（`--markdown` で Markdown のリスト形式。使えない場合は理由） |
+| `links --workflow` | リリースワークフローの雛形を出力（タグで発火、バージョン無しアセットも同時アップロード）。API 呼び出しなし |
+| `badges [OWNER/REPO]` | README 用バッジの Markdown（ワークフローごと、license、最新リリース、last commit、stars） |
+| `explain CHECK_ID` | チェック1件の説明（理由・API・戻し方）を表示。オフラインで動作 |
 | `dependabot [OWNER/REPO]` | `dependabot.yml` を生成して標準出力へ（monthly、エコシステムごとに1 PR へ集約） |
 | `doctor [OWNER/REPO] [--json]` | 実行場所（クラウドコンテナ / 手元の Claude Code / 通常のシェル）の判定、python/git/gh の有無、使われるトークン（値は表示しない）、API への到達、リポジトリと各管理系エンドポイントへのアクセスを事前に確認 |
 | `restore [OWNER/REPO] [--yes] [--snapshot FILE]` | 直前の `apply --yes` が変更した内容を元に戻す（`--yes` なしはドライラン） |
@@ -138,7 +141,7 @@ clone の中では `OWNER/REPO` を省略でき、`git remote origin` から推�
 | セキュリティ | Dependabot alerts / security updates、secret scanning、push protection、private vulnerability reporting、CodeQL default setup（public のみ）、`dependabot.yml`（エコシステム自動検出、同梱 `third_party/`・`vendor/` は対象外）、Actions の SHA 固定（報告のみ）、`GITHUB_TOKEN` のデフォルト権限（既存の `dependabot.yml` はディレクトリ単位でも確認） | デフォルト（トークン権限は opt-in） |
 | 1人開発 | **solo-blocker**（❌ 検出のみ）、`solo-guard` ruleset、`v*` タグ用 `solo-tag-guard` ruleset、マージ後のブランチ自動削除、Discussions | デフォルト（タグ保護・Discussions は opt-in） |
 | 配布 | GitHub Pages（opt-in）、リリース / latest / アセット名（報告）、push でリリースが走るワークフローの警告（報告）、`.github/release.yml` | デフォルト（Pages は opt-in） |
-| メタ情報 | description、topics（opt-in）、license（自動生成しない）、`SECURITY.md`、social preview（API 不可：設定画面の URL を提示） | デフォルト（topics は opt-in） |
+| メタ情報 | description、topics（opt-in）、license（自動生成しない）、`SECURITY.md`、`release.yml` が使うラベル（opt-in）、Issue / PR テンプレートと `CONTRIBUTING.md`（opt-in）、social preview（API 不可：設定画面の URL を提示） | デフォルト（topics・ラベル・コミュニティファイルは opt-in） |
 
 ### 生成ファイルと「push でリリースが走る」警告
 

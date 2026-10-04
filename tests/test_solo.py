@@ -51,6 +51,11 @@ class Base(unittest.TestCase):
         return [(m, p, b) for m, p, b in self.mock.writes]
 
 
+def solo_check_ids(case):
+    _, _, st = case.audit()
+    return list(st)
+
+
 # ---------------------------------------------------------------------------
 class VoiceboothScenario(Base):
     state = staticmethod(fixtures.voicebooth)
@@ -68,6 +73,7 @@ class VoiceboothScenario(Base):
             "dependabot-config": "warn", "actions-pinning": "ok",
             "workflow-permissions": "warn", "solo-blocker": "ok", "guardrail": "warn", "tag-guard": "warn",
             "delete-branch-on-merge": "warn", "discussions": "warn", "pages": "warn",
+            "labels": "warn", "community-files": "warn",
             "releases": "warn", "release-workflow": "warn", "release-notes-config": "warn",
             "description": "ok", "topics": "ok", "license": "ok", "security-policy": "ok",
             "social-preview": "ok",
@@ -168,6 +174,54 @@ class VoiceboothScenario(Base):
         data = json.loads(out)
         self.assertEqual(data["exit_code"], 0)
         self.assertIn("read rulesets", [c["name"] for c in data["checks"]])
+
+    def test_labels_and_community_files_are_opt_in_and_undoable(self):
+        initial = json.loads(json.dumps(self.mock.state))
+        rc, out, _ = self.run_solo("apply", self.slug)
+        self.assertNotIn("] labels:", out)
+        self.assertNotIn("] community-files:", out)
+        self.assertIn("- labels:", out)
+        d = tempfile.mkdtemp()
+        subprocess.run(["git", "init", "-q", d], check=True)
+        subprocess.run(["git", "-C", d, "remote", "add", "origin",
+                        "https://github.com/seventhwell/voicebooth.git"], check=True)
+        rc, out, err = self.run_solo("apply", "--yes", "--only", "labels,community-files", cwd=d)
+        self.assertEqual(rc, 0, out + err)
+        self.assertEqual(sorted(self.mock.state["labels"]), sorted(["bug", "enhancement", "documentation", "breaking-change"]))
+        for f in (".github/pull_request_template.md", ".github/ISSUE_TEMPLATE/bug_report.md",
+                  ".github/ISSUE_TEMPLATE/feature_request.md", "CONTRIBUTING.md"):
+            self.assertTrue(os.path.exists(os.path.join(d, f)), f)
+        with open(os.path.join(d, "CONTRIBUTING.md")) as f:
+            self.assertIn("Contributing to voicebooth", f.read())
+        rc, out, _ = self.run_solo("restore", self.slug, "--yes")
+        self.assertEqual(self.mock.state["labels"], initial["labels"])
+
+    def test_audit_flags(self):
+        rc, out, _ = self.run_solo("audit", self.slug, "--quiet")
+        self.assertNotIn("✅", out)
+        self.assertIn("dependabot-alerts", out)
+        rc, out, _ = self.run_solo("audit", self.slug, "--fail-on", "warn")
+        self.assertEqual(rc, 1)
+        every = ",".join(solo_check_ids(self))
+        rc, out, _ = self.run_solo("audit", self.slug, "--ignore", every, "--json")
+        self.assertEqual(json.loads(out)["results"], [])
+        rc, _, err = self.run_solo("audit", self.slug, "--ignore", "nope")
+        self.assertEqual(rc, 2)
+
+    def test_explain_badges_and_workflow_template(self):
+        rc, out, _ = self.run_solo("explain", "guardrail")
+        self.assertEqual(rc, 0)
+        self.assertIn("solo-guard", out)
+        rc, out, _ = self.run_solo("explain", "push-protection")
+        self.assertIn("security_and_analysis", out)
+        rc, _, err = self.run_solo("explain", "nope")
+        self.assertEqual(rc, 2)
+        rc, out, _ = self.run_solo("badges", self.slug)
+        self.assertIn("/actions/workflows/ci.yml/badge.svg", out)
+        self.assertIn("img.shields.io/github/license/seventhwell/voicebooth", out)
+        rc, out, _ = self.run_solo("links", "--workflow")
+        self.assertIn('tags: ["v*"]', out)
+        self.assertIn("app-win64.zip", out)
 
     def test_tag_guard_is_opt_in(self):
         rc, out, _ = self.run_solo("apply", self.slug)
@@ -429,7 +483,7 @@ class ConfiguredScenario(Base):
     def test_everything_ok(self):
         rc, data, st = self.audit()
         self.assertEqual(rc, 0)
-        self.assertEqual(data["summary"], {"ok": 23, "warn": 0, "bad": 0, "na": 0}, self.status(st))
+        self.assertEqual(data["summary"], {"ok": 25, "warn": 0, "bad": 0, "na": 0}, self.status(st))
 
     def test_dry_run_reports_no_changes(self):
         rc, out, _ = self.run_solo("apply", self.slug)

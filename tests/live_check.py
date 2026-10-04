@@ -21,7 +21,7 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOLO = os.path.join(ROOT, "scripts", "solo.py")
-FILE_ITEMS = {"dependabot-config", "release-notes-config", "security-policy"}  # need a clone; not API writes
+FILE_ITEMS = {"dependabot-config", "release-notes-config", "security-policy", "community-files"}  # need a clone; not API writes
 
 
 def solo(env, *args):

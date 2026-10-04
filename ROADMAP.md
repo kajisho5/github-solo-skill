@@ -5,13 +5,14 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 ## Done (0.1)
 
 - `audit` (text + `--json`, exit 1 on ❌), `apply` (dry run, `--yes`, `--only`, `--skip`), `links`, `dependabot`.
-- 23 checks across Security / Solo development / Distribution / Metadata (see [references/checks.md](references/checks.md)).
+- 25 checks across Security / Solo development / Distribution / Metadata (see [references/checks.md](references/checks.md)).
 - Solo-blocker detection (classic protection and rulesets), `solo-guard` ruleset, release-on-push warning.
 - Mock GitHub API test suite, CI on Python 3.9 and 3.13, release-please.
 - `--lang ja`, `apply --json`, `audit --all-repos`, `audit --github-annotations`, `links --markdown`.
 - Per-directory coverage of an existing `dependabot.yml`; release detection through reusable workflows and `refs/tags` conditions.
 - Opt-in `tag-guard` ruleset for `v*` tags.
 - `doctor`, and `restore` (every `apply --yes` saves an undo snapshot).
+- `explain`, `badges`, `links --workflow`, `audit --quiet / --ignore / --fail-on`; opt-in `labels` and `community-files`.
 - `tests/live_check.py`: runs every write against a real scratch repo, then reverts and compares (smoke-tested against the mock).
 
 ## Next

@@ -193,6 +193,18 @@ class MockGitHub(object):
             before = len(s["rulesets"])
             s["rulesets"] = [r for r in s["rulesets"] if str(r["id"]) != m.group(1)]
             return (204, None) if len(s["rulesets"]) < before else (404, {"message": "Not Found"})
+        if sub == "/labels":
+            if method == "GET":
+                return 200, [{"name": n} for n in s.get("labels", [])]
+            if method == "POST":
+                s.setdefault("labels", []).append(body["name"])
+                return 201, {"name": body["name"]}
+        m = re.match(r"^/labels/(.+)$", sub)
+        if m and method == "DELETE":
+            if m.group(1) in s.get("labels", []):
+                s["labels"].remove(m.group(1))
+                return 204, None
+            return 404, {"message": "Not Found"}
         if sub == "/collaborators" and method == "GET":
             return 200, s["collaborators"]
         if sub == "/actions/permissions/workflow":

@@ -47,6 +47,8 @@ duplicates the bytes; that is the price of a stable name (GitHub has no redirect
 
 ## Workflow example
 
+`python3 scripts/solo.py links --workflow` prints this template.
+
 Publishes versioned + version-less assets on a tag, as a normal (non-pre) release. Pin the action SHAs to
 the versions you use (`actions-pinning` check).
 

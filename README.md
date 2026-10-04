@@ -114,10 +114,13 @@ python3 scripts/solo.py apply OWNER/REPO --yes --only topics --topics audio,stre
 
 | Command | What it does |
 |---|---|
-| `audit [OWNER/REPO] [--json] [--github-annotations]` | diagnose; exit 1 if any ❌. `--github-annotations` also prints `::warning`/`::error` lines for CI |
+| `audit [OWNER/REPO] [--json] [--quiet] [--ignore ids] [--fail-on warn] [--github-annotations]` | diagnose; exit 1 if any ❌ (`--fail-on warn`: also on ⚠️). `--quiet` hides ✅/➖, `--ignore` leaves checks out, `--github-annotations` also prints `::warning`/`::error` lines for CI |
 | `audit --all-repos OWNER [--json]` | one summary line per non-archived, non-fork repo of an owner |
 | `apply [OWNER/REPO] [--yes] [--only ids] [--skip ids] [--pages-path / \| /docs] [--topics a,b] [--commit-files] [--accept-release-risk] [--json]` | dry-run plan; `--yes` executes; `--json` prints the plan and the execution log |
 | `links [OWNER/REPO] [--markdown]` | stable latest-release download URLs (optionally as Markdown list items), or why they cannot work |
+| `links --workflow` | print a release workflow template (tag-triggered, uploads version-less asset copies); no API call |
+| `badges [OWNER/REPO]` | README badge Markdown: one per workflow, license, latest release, last commit, stars |
+| `explain CHECK_ID` | print the reference entry of a check (why, API, how to undo); works offline |
 | `dependabot [OWNER/REPO]` | print a generated `dependabot.yml` (monthly, one grouped PR per ecosystem) |
 | `doctor [OWNER/REPO] [--json]` | detect where it runs (cloud container / Claude Code on your machine / plain shell), check python/git/gh, which token is used (never printed), API reachability, your access to the repo and to each admin endpoint, before anything else goes wrong |
 | `restore [OWNER/REPO] [--yes] [--snapshot FILE]` | revert what the last `apply --yes` changed (dry run unless `--yes`) |
@@ -137,7 +140,7 @@ Details, APIs and how to revert each one: [references/checks.md](references/chec
 | Security | Dependabot alerts + security updates, secret scanning, push protection, private vulnerability reporting, CodeQL default setup (public repos), `dependabot.yml` (ecosystems auto-detected, bundled `third_party/`/`vendor/` ignored), Actions SHA pinning (report), default `GITHUB_TOKEN` permission (an existing `dependabot.yml` is checked per directory, too) | default (token permission: opt-in) |
 | Solo development | **solo-blocker** (❌ detect only), `solo-guard` ruleset, `solo-tag-guard` ruleset for `v*` tags, delete head branch on merge, Discussions | default (tag guard, Discussions: opt-in) |
 | Distribution | GitHub Pages (opt-in), releases / latest / asset names (report), release-on-push workflow warning (report), `.github/release.yml` | default (Pages: opt-in) |
-| Metadata | description, topics (opt-in), license (never generated), `SECURITY.md`, social preview (no API: link to the setting) | default (topics: opt-in) |
+| Metadata | description, topics (opt-in), license (never generated), `SECURITY.md`, labels used by `release.yml` (opt-in), issue / PR templates + `CONTRIBUTING.md` (opt-in), social preview (no API: link to the setting) | default (topics, labels, community files: opt-in) |
 
 ### Files and the "push may release" warning
 

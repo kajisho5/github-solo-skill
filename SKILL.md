@@ -56,7 +56,7 @@ while Claude Code on the user's own machine can run `apply --yes` directly. Dete
      asked for a diagnosis, ask first).
    - **Opt-in items are applied only with `--only` and only after asking about each one**, because
      they change the public face or can break workflows: `pages`, `discussions`, `topics`
-     (`--topics a,b`), `workflow-permissions`, `tag-guard`. Example:
+     (`--topics a,b`), `workflow-permissions`, `tag-guard`, `labels`, `community-files`. Example:
      `SOLO apply OWNER/REPO --yes --only pages --pages-path /docs`.
    - Never try to fix a ❌ yourself with extra API calls. Explain it, show the printed commands, and
      let the user decide. (Removing an approval rule is the user's call.)
@@ -76,6 +76,8 @@ while Claude Code on the user's own machine can run `apply --yes` directly. Dete
 
 ## Other subcommands
 
+- `SOLO explain CHECK_ID`: prints why/API/undo of one check (offline). `SOLO badges OWNER/REPO`: README badge Markdown.
+  `audit --quiet --ignore a,b --fail-on warn` for CI. `SOLO links --workflow`: release workflow template (version-less assets).
 - `SOLO restore OWNER/REPO` (dry run) / `--yes`: reverts what the last `apply --yes` changed, using the snapshot it saved.
   Offer it whenever the user regrets a change. It does not delete generated files.
 
@@ -109,6 +111,7 @@ Full list with API, reason and how to undo each: `references/checks.md`. Summary
 | | `release-notes-config` (`.github/release.yml`) | yes |
 | Metadata | `security-policy` (`SECURITY.md`) | yes |
 | | `topics` | **opt-in** (`--topics`) |
+| | `labels` (create the labels `release.yml` uses), `community-files` (issue / PR templates, CONTRIBUTING) | **opt-in** |
 | | `description`, `license`, `social-preview` (report only; license is the user's decision, social preview has no API) | n/a |
 
 Private repos: GitHub Secret Protection / Code Security are paid, so those rows show ➖ with the reason
