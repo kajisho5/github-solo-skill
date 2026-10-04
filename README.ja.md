@@ -6,7 +6,7 @@
 
 <p align="center">
   診断 · 安全な自動設定 · 無料機能のみ · Python 標準ライブラリのみ<br>
-  Claude Code · Cursor · Codex · <code>SKILL.md</code> を読むエージェント
+  Claude Code · Codex · Cursor · Copilot · <code>SKILL.md</code> / <code>AGENTS.md</code> を読む、または MCP に対応するエージェント
 </p>
 
 <p align="center">
@@ -183,6 +183,18 @@ git clone https://github.com/kajisho5/github-solo-skill ~/.claude/skills/github-
 git clone https://github.com/kajisho5/github-solo-skill ~/.cursor/skills/github-solo   # Cursor
 git clone https://github.com/kajisho5/github-solo-skill ~/.agents/skills/github-solo   # Codex（Cursor もここを読みます）
 ```
+
+### 他の AI エージェント（Codex、Cursor、Copilot、Gemini CLI など）
+
+| エージェント | 方法 |
+|---|---|
+| **Codex** | skill：`~/.agents/skills/github-solo`（ユーザー）または `<repo>/.agents/skills/github-solo`（リポジトリ）へ clone（[Codex skills ドキュメント](https://learn.chatgpt.com/docs/build-skills)）。MCP：`codex mcp add github-solo -- python3 /path/to/github-solo/scripts/solo_mcp.py`、または `~/.codex/config.toml` に `[mcp_servers.github-solo]`（`command`・`args`）（[ドキュメント](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)）。`AGENTS.md` も読みます。 |
+| **Claude Code** | skill（上記）、plugin（下記）、または MCP：`claude mcp add github-solo -- python3 /path/to/github-solo/scripts/solo_mcp.py` |
+| **Cursor** | skills ディレクトリ `~/.cursor/skills/github-solo`（姉妹プロジェクト [ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) の記載に従ったパス。`~/.agents/skills` も読みます）。Cursor 自身のドキュメントでは未確認です。 |
+| **GitHub Copilot** | このリポジトリの `AGENTS.md` と `.github/copilot-instructions.md` を読みます（[ドキュメント](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions)）。 |
+| **その他のエージェント** | MCP stdio サーバー `python3 scripts/solo_mcp.py`（ツール：`solo_doctor`、`solo_audit`、`solo_apply_plan`、`solo_apply`、`solo_restore`、`solo_links`、`solo_dependabot`、`solo_badges`、`solo_explain`）、または `python3 scripts/solo.py ...` を直接実行。エージェントには `AGENTS.md` を読ませてください。 |
+
+MCP サーバーは [MCP stdio トランスポート](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)（改行区切りの JSON-RPC、プロトコル 2025-06-18 / 2025-03-26 / 2024-11-05）に従います。検証は自作のクライアントと Claude Code 自身のクライアント（`claude mcp list` で接続成功）で行いました。Codex と Cursor では試していません。`solo_apply` と `solo_restore` は `confirm` が `true` でない限り何も変更しません。
 
 Claude Code plugin として（このリポジトリが marketplace を兼ねます）：
 

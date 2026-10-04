@@ -15,6 +15,13 @@ Where is the script? In the directory this SKILL.md was loaded from: `<skill dir
 (`~/.claude/skills/github-solo/scripts/solo.py` for a user install, `${CLAUDE_PLUGIN_ROOT}/scripts/solo.py`
 for the plugin). Below, `SOLO` stands for `python3 <skill dir>/scripts/solo.py`.
 
+## Works with any agent
+
+This file follows the Agent Skills layout (`SKILL.md` + `scripts/` + `references/`), which Claude Code, Codex and Cursor can load from
+their skills directories (see the README for the paths). Agents without skills support can read `AGENTS.md`, or call the same commands
+as MCP tools: `python3 scripts/solo_mcp.py` (stdio; `solo_apply` / `solo_restore` are dry runs unless `confirm` is true).
+Everything below applies to every agent; only the way you detect the environment differs.
+
 ## Step 0: find out where you are running (never assume)
 
 Advice depends on it: a cloud container can read GitHub but its network proxy may refuse settings writes,
@@ -22,7 +29,8 @@ while Claude Code on the user's own machine can run `apply --yes` directly. Dete
 
 1. Run `SOLO doctor` and read the `environment` row (or check the variables yourself:
    `CLAUDE_CODE_REMOTE=true` / `CCR_AGENT_PROXY_ENABLED` → managed cloud container;
-   `CLAUDECODE=1` without those → Claude Code on this machine; neither → plain shell/CI).
+   `CLAUDECODE=1` without those → Claude Code on this machine; neither → another agent, plain shell or CI: then
+   judge by facts (`doctor` shows whether the API is reachable and which admin endpoints answer 403 "not permitted through this proxy").
    `CLAUDE_CODE_ENTRYPOINT` shows how the session was started (for example `remote_mobile` was observed in a cloud
    session started from the app); report the raw value and do not guess what an unfamiliar value means: say it is unknown.
 2. Tell the user in one line what you detected ("This is a cloud Claude Code session, not your computer").

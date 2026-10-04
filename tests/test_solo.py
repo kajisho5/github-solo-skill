@@ -734,3 +734,82 @@ class Helpers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class McpServer(Base):
+    state = staticmethod(fixtures.voicebooth)
+    slug = "seventhwell/voicebooth"
+
+    def rpc(self, *msgs):
+        env = dict(os.environ, SOLO_API_BASE=self.mock.url, GH_TOKEN="test-token", SOLO_STATE_DIR=self.state_dir)
+        inp = "".join(json.dumps(m) + "\n" for m in msgs)
+        p = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "solo_mcp.py")], input=inp, env=env,
+                           cwd=self.tmp, capture_output=True, text=True, timeout=60)
+        lines = [json.loads(l) for l in p.stdout.splitlines()]  # stdout must be pure JSON-RPC
+        return {l["id"]: l for l in lines if "id" in l}
+
+    def call(self, name, args, i=2):
+        init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}}
+        out = self.rpc(init, {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                       {"jsonrpc": "2.0", "id": i, "method": "tools/call", "params": {"name": name, "arguments": args}})
+        return out[i]["result"]
+
+    def test_handshake_and_tool_list(self):
+        out = self.rpc({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
+                       {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                       {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+                       {"jsonrpc": "2.0", "id": 3, "method": "ping"},
+                       {"jsonrpc": "2.0", "id": 4, "method": "nope"})
+        self.assertEqual(out[1]["result"]["protocolVersion"], "2025-06-18")
+        self.assertEqual(out[1]["result"]["serverInfo"]["name"], "github-solo")
+        names = {t["name"] for t in out[2]["result"]["tools"]}
+        self.assertEqual(names, {"solo_doctor", "solo_audit", "solo_apply_plan", "solo_apply", "solo_restore",
+                                 "solo_links", "solo_dependabot", "solo_badges", "solo_explain"})
+        for t in out[2]["result"]["tools"]:
+            self.assertEqual(t["inputSchema"]["type"], "object")
+        self.assertEqual(out[3]["result"], {})
+        self.assertEqual(out[4]["error"]["code"], -32601)
+        old = self.rpc({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}})
+        self.assertEqual(old[1]["result"]["protocolVersion"], "2025-06-18")
+
+    def test_audit_tool(self):
+        res = self.call("solo_audit", {"repo": self.slug})
+        self.assertFalse(res["isError"])
+        data = json.loads(res["content"][0]["text"])
+        self.assertEqual(data["repo"], self.slug)
+        self.assertEqual(data["summary"]["bad"], 0)
+
+    def test_apply_is_dry_run_without_confirm(self):
+        res = self.call("solo_apply", {"repo": self.slug})
+        self.assertFalse(res["isError"])
+        self.assertTrue(json.loads(res["content"][0]["text"])["dry_run"])
+        self.assertEqual(self.writes(), [])
+        res = self.call("solo_apply_plan", {"repo": self.slug, "only": "labels"})
+        self.assertEqual(self.writes(), [])
+        res = self.call("solo_apply", {"repo": self.slug, "confirm": False, "only": "delete-branch-on-merge"})
+        self.assertEqual(self.writes(), [])
+
+    def test_apply_with_confirm_changes_and_restore_needs_confirm(self):
+        res = self.call("solo_apply", {"repo": self.slug, "confirm": True, "only": "delete-branch-on-merge"})
+        self.assertFalse(res["isError"], res)
+        self.assertEqual(self.writes(), [("PATCH", "/repos/seventhwell/voicebooth", {"delete_branch_on_merge": True})])
+        self.mock.clear_writes()
+        res = self.call("solo_restore", {"repo": self.slug})
+        self.assertEqual(self.writes(), [])
+        res = self.call("solo_restore", {"repo": self.slug, "confirm": True})
+        self.assertEqual(self.writes(), [("PATCH", "/repos/seventhwell/voicebooth", {"delete_branch_on_merge": False})])
+
+    def test_bad_input_is_a_tool_error_not_a_crash(self):
+        for name, args in (("solo_audit", {"repo": "--help"}), ("solo_audit", {"nope": 1}), ("solo_explain", {}),
+                           ("solo_nothing", {}), ("solo_apply", {"repo": self.slug, "only": "nope"})):
+            res = self.call(name, args)
+            self.assertTrue(res["isError"], (name, args))
+
+    def test_links_and_explain(self):
+        res = self.call("solo_links", {"workflow_template": True})
+        self.assertIn("tags:", res["content"][0]["text"])
+        self.assertFalse(res["isError"])
+        res = self.call("solo_explain", {"check_id": "guardrail"})
+        self.assertIn("solo-guard", res["content"][0]["text"])
+        res = self.call("solo_links", {"repo": self.slug})
+        self.assertFalse(res["isError"])  # "no usable link" is information, not a tool failure

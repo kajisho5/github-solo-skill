@@ -12,6 +12,7 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 - Per-directory coverage of an existing `dependabot.yml`; release detection through reusable workflows and `refs/tags` conditions.
 - Opt-in `tag-guard` ruleset for `v*` tags.
 - `doctor`, and `restore` (every `apply --yes` saves an undo snapshot).
+- `AGENTS.md`, `.github/copilot-instructions.md` and an MCP stdio server (`scripts/solo_mcp.py`, 9 tools; apply / restore are dry runs unless `confirm`).
 - `--profile`, 0-100 score, before->after in dry-run plans, `ci-template`, GitHub Enterprise Server GraphQL routing (unit-tested URL mapping, not run against a real GHES).
 - `explain`, `badges`, `links --workflow`, `audit --quiet / --ignore / --fail-on`; opt-in `labels` and `community-files`.
 - `tests/live_check.py`: runs every write against a real scratch repo, then reverts and compares (smoke-tested against the mock).
@@ -30,6 +31,9 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 - **Verify `refs/tags/v*` for the tag ruleset and `GET /rulesets` `target` against the live API.**
 
 ## Maybe
+
+- Test the MCP server with Codex and Cursor (Claude Code's own client connects fine) and add each host's own config snippet once confirmed.
+- Cursor rules / Gemini CLI context files, once their formats are confirmed from the vendors' docs.
 
 - Run against a real GitHub Enterprise Server.
 

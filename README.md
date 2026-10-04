@@ -6,7 +6,7 @@
 
 <p align="center">
   Audit · Safe auto-setup · Free features only · Python standard library<br>
-  Claude Code · Cursor · Codex · any agent that reads <code>SKILL.md</code>
+  Claude Code · Codex · Cursor · Copilot · any agent that reads <code>SKILL.md</code> / <code>AGENTS.md</code>, or speaks MCP
 </p>
 
 <p align="center">
@@ -182,6 +182,18 @@ git clone https://github.com/kajisho5/github-solo-skill ~/.claude/skills/github-
 git clone https://github.com/kajisho5/github-solo-skill ~/.cursor/skills/github-solo   # Cursor
 git clone https://github.com/kajisho5/github-solo-skill ~/.agents/skills/github-solo   # Codex (Cursor reads this too)
 ```
+
+### Other AI agents (Codex, Cursor, Copilot, Gemini CLI, ...)
+
+| Agent | How |
+|---|---|
+| **Codex** | skills: clone into `~/.agents/skills/github-solo` (user) or `<repo>/.agents/skills/github-solo` (repo), per the [Codex skills docs](https://learn.chatgpt.com/docs/build-skills). MCP: `codex mcp add github-solo -- python3 /path/to/github-solo/scripts/solo_mcp.py` or a `[mcp_servers.github-solo]` table (`command`, `args`) in `~/.codex/config.toml` ([docs](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)). Codex also reads `AGENTS.md`. |
+| **Claude Code** | skill (above), plugin (below), or MCP: `claude mcp add github-solo -- python3 /path/to/github-solo/scripts/solo_mcp.py` |
+| **Cursor** | skills directory `~/.cursor/skills/github-solo` (path as documented by the sibling project [ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill); Cursor reads `~/.agents/skills` too). Not verified against Cursor's own docs. |
+| **GitHub Copilot** | reads `AGENTS.md` and `.github/copilot-instructions.md` in this repo ([docs](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions)). |
+| **Any other agent** | MCP stdio server `python3 scripts/solo_mcp.py` (tools: `solo_doctor`, `solo_audit`, `solo_apply_plan`, `solo_apply`, `solo_restore`, `solo_links`, `solo_dependabot`, `solo_badges`, `solo_explain`), or just run `python3 scripts/solo.py ...`; point the agent at `AGENTS.md`. |
+
+The MCP server follows the [MCP stdio transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports) (newline-delimited JSON-RPC, protocol versions 2025-06-18 / 2025-03-26 / 2024-11-05) and was tested with a hand-written client and with Claude Code's own client (`claude mcp list` reports it connected); Codex and Cursor have not been tried. `solo_apply` and `solo_restore` change nothing unless `confirm` is `true`.
 
 As a Claude Code plugin (marketplace hosted in this repo):
 

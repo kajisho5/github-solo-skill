@@ -1997,7 +1997,7 @@ def detect_environment(env=None):
         kind = "shell"
     text = {"cloud": "Claude Code in a managed cloud container (not your machine)",
             "local-claude-code": "Claude Code on this machine",
-            "shell": "no Claude Code signal (plain shell / CI)"}[kind]
+            "shell": "no Claude Code signal (another agent, a plain shell or CI)"}[kind]
     return {"kind": kind, "entrypoint": entry or None, "signals": sig, "text": text}
 
 
