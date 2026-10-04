@@ -216,7 +216,8 @@ claude plugin install github-solo@github-solo-skill
 python -m unittest           # 全テスト。ネットワーク不要（モック GitHub API サーバーを内部で起動）
 python -m unittest tests.test_solo.VoiceboothScenario -v
 
-# 実 API で検証（自分の使い捨てリポジトリの設定を変更し、そのあと元に戻します）:
+# 実 API で検証（自分の使い捨てリポジトリの設定を変更し、そのあと元に戻します）。
+# 2026-10-04 の実行：11項目が RESULT: PASS（カバー範囲は ROADMAP.md）:
 python3 tests/live_check.py YOU/scratch-repo --confirm YOU/scratch-repo
 ```
 

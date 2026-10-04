@@ -110,7 +110,7 @@ need `--only <id>`.
 - Shown only when the repo has releases (else ➖). ✅ if an active ruleset targets tags.
 - Apply: `POST /repos/{o}/{r}/rulesets` with `{"name":"solo-tag-guard","target":"tag","enforcement":"active","conditions":{"ref_name":{"include":["refs/tags/v*"],"exclude":[]}},"rules":[{"type":"deletion"},{"type":"non_fast_forward"}]}`.
 - Opt-in because a workflow that deletes and re-creates a tag would be blocked. Lift it like `solo-guard` (set `enforcement` to `disabled`).
-- The `refs/tags/v*` pattern form is taken from the ruleset conditions docs but was not run against the live API (see ROADMAP).
+- The `refs/tags/v*` pattern was applied and reverted against the live API (see ROADMAP).
 
 ### delete-branch-on-merge (default)
 - Read/Apply: `delete_branch_on_merge` in `GET` / `PATCH /repos/{o}/{r}`. Undo: set `false`.

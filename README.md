@@ -215,7 +215,8 @@ Without any agent: `python3 scripts/solo.py --help`. Update a clone with `git pu
 python -m unittest           # all tests, no network: a mock GitHub API server runs in-process
 python -m unittest tests.test_solo.VoiceboothScenario -v
 
-# against the real API, on a disposable repo you own (changes its settings, then reverts them):
+# against the real API, on a disposable repo you own (changes its settings, then reverts them).
+# Last run 2026-10-04: RESULT: PASS for 11 items (see ROADMAP.md for what it covered):
 python3 tests/live_check.py YOU/scratch-repo --confirm YOU/scratch-repo
 ```
 

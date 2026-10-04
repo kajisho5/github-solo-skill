@@ -16,11 +16,17 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 - `--profile`, 0-100 score, before->after in dry-run plans, `ci-template`, GitHub Enterprise Server GraphQL routing (unit-tested URL mapping, not run against a real GHES).
 - `explain`, `badges`, `links --workflow`, `audit --quiet / --ignore / --fail-on`; opt-in `labels` and `community-files`.
 - `tests/live_check.py`: runs every write against a real scratch repo, then reverts and compares (smoke-tested against the mock).
+- **Verified against the real GitHub API (2026-10-04, public scratch repo, Windows, `gh` token):** `live_check.py` returned `RESULT: PASS`.
+  11 items were applied and reverted with every API call answering success: `codeql`, `delete-branch-on-merge`, `dependabot-alerts`,
+  `dependabot-security-updates`, `discussions`, `guardrail` (ruleset), `labels`, `pages`, `private-vuln-reporting`, `tag-guard` (ruleset,
+  `refs/tags/v*`), `topics`; an independent before/after audit comparison of all 25 checks was identical. This also confirms the ruleset
+  list `target` field and the `refs/tags/v*` pattern.
 
 ## Next
 
-- **Run `tests/live_check.py` against a real scratch repo and fix whatever it finds.** The unit tests assert the request bodies against
-  a mock built from the GitHub REST docs; the real API has not been exercised yet.
+- **Live-verify what `live_check.py` did not cover:** `secret-scanning` / `push-protection` (already on in a fresh public repo, so nothing was applied),
+  `workflow-permissions` (already `read`), `dependabot-config` / `release-notes-config` / `security-policy` / `community-files` (file items need a clone;
+  `--commit-files` was not run live), private repos on a free plan, and `solo-blocker` with a real approval rule.
 - **Fine-grained token matrix.** Confirm the minimum permission per endpoint by running each call with a token that has only that permission
   (the table in the README is taken from the GitHub docs, not measured).
 - **Dependabot manifest names.** The ecosystem names come from Dependabot's options reference. The manifest file names
@@ -28,7 +34,6 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
   conventional names and are not confirmed from a docs table.
 - **Release-workflow detection.** Still a text heuristic; cross-repo reusable workflows and general `if:` conditions are not followed.
 - **Complete Japanese output.** `--lang ja` translates the fixed phrases; a few sentences are still English.
-- **Verify `refs/tags/v*` for the tag ruleset and `GET /rulesets` `target` against the live API.**
 
 ## Maybe
 
