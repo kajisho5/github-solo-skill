@@ -27,11 +27,17 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
   `guardrail` counts classic protection as satisfied); generated files written inside a clone (`release.yml`, `SECURITY.md`, PR / issue templates,
   `CONTRIBUTING.md`: second run "No changes needed", `SECURITY.md` carries the right advisory URL), pushed, and the three checks turned ✅.
   A repo without manifests correctly reports `dependabot-config` as ➖.
+- **Verified live, third round (same repo, same day):** `--commit-files` from a non-clone directory (`SECURITY.md` committed to the default branch through the
+  Contents API; second run "No changes needed"); `dependabot.yml` generated from real manifests (`package.json` + `requirements.txt` -> npm and pip, `directory "/"`,
+  monthly, grouped) and committed; an existing `dependabot.yml` is left byte-identical (same blob sha) while a missing directory (`npm in /web`) is only proposed;
+  `solo-blocker` through a repository ruleset (❌, exit code 1, ruleset id and `enforcement=disabled` fix command; `apply` left the ruleset untouched and `restore`
+  removed only the `solo-guard` it had created); a private repo on the free plan (6 checks ➖ with the paid-plan reason, plan contains no paid item, `apply --yes` and `restore`
+  exit 0). Before/after audits of the scratch repo were identical after cleanup.
 
 ## Next
 
-- **Live-verify what is still open:** `--commit-files` (Contents API commit), generating `dependabot.yml` for a repo that has manifests,
-  `solo-blocker` through a ruleset (only classic protection was tried), and private repos on a free plan.
+- **Live-verify the remainder:** an organization-owned repo (org policies can change the workflow-permissions endpoint's answer, e.g. 409), and `--commit-files` together
+  with the release-on-push guard on a repo that really has such a workflow.
 - **Fine-grained token matrix.** Confirm the minimum permission per endpoint by running each call with a token that has only that permission
   (the table in the README is taken from the GitHub docs, not measured).
 - **Dependabot manifest names.** The ecosystem names come from Dependabot's options reference. The manifest file names

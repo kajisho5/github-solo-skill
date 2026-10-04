@@ -43,6 +43,10 @@ If the workflow-file path `.github/workflows/*` is ever written (this tool does 
 Notes: the fine-grained mapping comes from the docs page above and was summarized, not tested against every endpoint.
 For a read-only audit, "Read" levels suffice for everything except that some admin-only reads still return 403/404 without Administration.
 
+## `gh repo delete` says HTTP 403 / needs the delete_repo scope
+
+`gh auth login` does not grant `delete_repo`. Run `gh auth refresh -h github.com -s delete_repo` once, or delete the repo in its Settings page.
+
 ## Right after a change, the audit still shows the old value
 
 GitHub applies some settings with a short delay (seen live with the Actions default workflow permission: a `GET` straight after the `PUT` returned
