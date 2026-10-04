@@ -35,7 +35,7 @@ class Base(unittest.TestCase):
                    SOLO_STATE_DIR=self.state_dir, SOLO_LANG="en")
         env.pop("GITHUB_TOKEN", None)
         p = subprocess.run([sys.executable, SOLO] + list(args), env=env,
-                           cwd=kw.get("cwd", self.tmp), capture_output=True, text=True)
+                           cwd=kw.get("cwd", self.tmp), capture_output=True, text=True, encoding="utf-8")
         return p.returncode, p.stdout, p.stderr
 
     def audit(self):
@@ -101,7 +101,8 @@ class VoiceboothScenario(Base):
         self.assertIn("Undo information saved", out)
         snaps = os.listdir(self.state_dir)
         self.assertEqual(len(snaps), 1)
-        self.assertEqual(oct(os.stat(os.path.join(self.state_dir, snaps[0])).st_mode & 0o777), "0o600")
+        if os.name != "nt":  # Windows has no POSIX permission bits
+            self.assertEqual(oct(os.stat(os.path.join(self.state_dir, snaps[0])).st_mode & 0o777), "0o600")
         st = self.mock.state
         self.assertTrue(st["alerts"])
         self.assertEqual(len(st["rulesets"]), 2)
@@ -132,11 +133,11 @@ class VoiceboothScenario(Base):
         env = dict(os.environ, SOLO_API_BASE=self.mock.url, GH_TOKEN="test-token", SOLO_STATE_DIR=self.state_dir)
         script = os.path.join(ROOT, "tests", "live_check.py")
         p = subprocess.run([sys.executable, script, self.slug, "--confirm", self.slug], env=env,
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("RESULT: PASS", p.stdout)
         p = subprocess.run([sys.executable, script, self.slug, "--confirm", "other/repo"], env=env,
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8")
         self.assertNotEqual(p.returncode, 0)
 
     def test_environment_detection(self):
@@ -158,7 +159,7 @@ class VoiceboothScenario(Base):
                                   ({"CLAUDECODE": "1", "CLAUDE_CODE_ENTRYPOINT": "cli"}, "local-claude-code", False),
                                   ({"CLAUDE_CODE_REMOTE": "true", "CLAUDE_CODE_ENTRYPOINT": "remote_mobile"}, "cloud", True)):
             p = subprocess.run([sys.executable, SOLO, "doctor", self.slug, "--json"], env=dict(base, **extra),
-                               capture_output=True, text=True)
+                               capture_output=True, text=True, encoding="utf-8")
             data = json.loads(p.stdout)
             self.assertEqual(data["environment"]["kind"], kind)
             self.assertEqual(any(c["name"] == "cloud note" for c in data["checks"]), note)
@@ -744,7 +745,7 @@ class McpServer(Base):
         env = dict(os.environ, SOLO_API_BASE=self.mock.url, GH_TOKEN="test-token", SOLO_STATE_DIR=self.state_dir)
         inp = "".join(json.dumps(m) + "\n" for m in msgs)
         p = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "solo_mcp.py")], input=inp, env=env,
-                           cwd=self.tmp, capture_output=True, text=True, timeout=60)
+                           cwd=self.tmp, capture_output=True, text=True, encoding="utf-8", timeout=60)
         lines = [json.loads(l) for l in p.stdout.splitlines()]  # stdout must be pure JSON-RPC
         return {l["id"]: l for l in lines if "id" in l}
 

@@ -25,7 +25,7 @@ FILE_ITEMS = {"dependabot-config", "release-notes-config", "security-policy", "c
 
 
 def solo(env, *args):
-    p = subprocess.run([sys.executable, SOLO] + list(args), env=env, capture_output=True, text=True)
+    p = subprocess.run([sys.executable, SOLO] + list(args), env=env, capture_output=True, text=True, encoding="utf-8")
     return p.returncode, p.stdout, p.stderr
 
 

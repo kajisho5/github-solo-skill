@@ -199,6 +199,9 @@ def handle(msg, stream):
 
 
 def main():
+    # MCP messages are UTF-8 with "\n" line ends on every platform (Windows defaults to a legacy code page and "\r\n")
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     stream = sys.stdout
     for raw in sys.stdin:
         raw = raw.strip()

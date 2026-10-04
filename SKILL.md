@@ -31,8 +31,8 @@ while Claude Code on the user's own machine can run `apply --yes` directly. Dete
    `CLAUDE_CODE_REMOTE=true` / `CCR_AGENT_PROXY_ENABLED` → managed cloud container;
    `CLAUDECODE=1` without those → Claude Code on this machine; neither → another agent, plain shell or CI: then
    judge by facts (`doctor` shows whether the API is reachable and which admin endpoints answer 403 "not permitted through this proxy").
-   `CLAUDE_CODE_ENTRYPOINT` shows how the session was started (for example `remote_mobile` was observed in a cloud
-   session started from the app); report the raw value and do not guess what an unfamiliar value means: say it is unknown.
+   `CLAUDE_CODE_ENTRYPOINT` shows how the session was started (observed values: `remote_mobile` in a cloud session started
+   from the app, `cli` in Claude Code on a user's own machine); report the raw value and do not guess what an unfamiliar value means: say it is unknown.
 2. Tell the user in one line what you detected ("This is a cloud Claude Code session, not your computer").
 3. Then tailor:
    - **Cloud container:** audits (reads) usually work; settings writes may fail with 403 "not permitted through this
