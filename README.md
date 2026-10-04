@@ -17,6 +17,7 @@
   <a href="https://github.com/kajisho5/github-solo-skill/commits/main"><img src="https://img.shields.io/github/last-commit/kajisho5/github-solo-skill" alt="last commit"></a>
   <img src="https://img.shields.io/badge/python-3.9%20%7C%203.13-blue" alt="Python 3.9 and 3.13 tested">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey" alt="Linux and Windows tested">
+  <a href="https://kajisho5.github.io/github-solo-skill/"><img src="https://img.shields.io/badge/site-GitHub%20Pages-2088ff" alt="GitHub Pages site"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT"></a>
   <a href="https://github.com/sponsors/kajisho5"><img src="https://img.shields.io/badge/sponsor-%E2%9D%A4-ea4aaa?logo=githubsponsors" alt="Sponsor"></a>
 </p>
@@ -25,7 +26,7 @@
 npx skills add kajisho5/github-solo-skill
 ```
 
-English · [日本語](README.ja.md)
+English · [日本語](README.ja.md) · [Website](https://kajisho5.github.io/github-solo-skill/)
 
 <p align="center"><img src="assets/demo-audit.png" alt="solo.py audit: every setting as OK / recommended / action needed / n/a, with the reason and the id that fixes it" width="900"></p>
 

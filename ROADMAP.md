@@ -40,6 +40,8 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
   vulnerability reporting, CodeQL default setup, ruleset `solo-guard`, delete-branch-on-merge) -> `audit`: 0 action needed, score 75 -> 90/100.
   What is left is intentional: opt-in `discussions`, `pages`, `labels`; `releases` (none yet); `release-workflow` (the release-please workflow, reported on purpose).
 
+- GitHub Pages is on for this repo (README rendered as the top page; Pages does not draw the mermaid diagram, GitHub's own README view does). `solo.py audit` on this repo: 0 action needed, score 98/100 (`--profile library`); the one remaining row is the release-please workflow notice.
+
 ## Next
 
 - **Live-verify the new checks:** `actions-can-create-prs` apply / undo, `ci-status`, `open-alerts` (the API status used when alerts are off), `issues-enabled`, Pages `https_enforced`. They are covered by mock tests only.
