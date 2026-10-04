@@ -37,6 +37,11 @@ def audit(env, repo):
 
 
 def main():
+    for stream in (sys.stdout, sys.stderr):  # the child output has emoji; legacy Windows code pages (cp932) cannot print it
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("repo", help="OWNER/REPO of the scratch repo")
     ap.add_argument("--confirm", required=True, help="repeat OWNER/REPO to confirm that its settings may be changed")
