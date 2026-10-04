@@ -188,7 +188,7 @@ git clone https://github.com/kajisho5/github-solo-skill ~/.agents/skills/github-
 
 | エージェント | 方法 |
 |---|---|
-| **Codex** | skill：`~/.agents/skills/github-solo`（ユーザー）または `<repo>/.agents/skills/github-solo`（リポジトリ）へ clone（[Codex skills ドキュメント](https://learn.chatgpt.com/docs/build-skills)）。MCP：`codex mcp add github-solo -- python3 /path/to/github-solo/scripts/solo_mcp.py`、または `~/.codex/config.toml` に `[mcp_servers.github-solo]`（`command`・`args`）（[ドキュメント](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)）。`AGENTS.md` も読みます。 |
+| **Codex** | skill：`~/.agents/skills/github-solo`（ユーザー）または `<repo>/.agents/skills/github-solo`（リポジトリ）へ clone（[Codex skills ドキュメント](https://learn.chatgpt.com/docs/build-skills)）。MCP：`codex mcp add github-solo -- python3 /path/to/github-solo/scripts/solo_mcp.py`、または `~/.codex/config.toml` に `[mcp_servers.github-solo]`（`command`・`args`）（[ドキュメント](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)）。`AGENTS.md` も読みます。**Codex デスクトップアプリ（Windows）：** *Settings → MCP servers → Add server → STDIO*、command に `python`、引数に `scripts\solo_mcp.py` のフルパス（ドキュメントでは CLI と `config.toml` を共有。Windows のパスは明記されておらず、アプリでは未検証）。 |
 | **Claude Code** | skill（上記）、plugin（下記）、または MCP：`claude mcp add github-solo -- python3 /path/to/github-solo/scripts/solo_mcp.py` |
 | **Cursor** | skills ディレクトリ `~/.cursor/skills/github-solo`（姉妹プロジェクト [ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) の記載に従ったパス。`~/.agents/skills` も読みます）。Cursor 自身のドキュメントでは未確認です。 |
 | **GitHub Copilot** | このリポジトリの `AGENTS.md` と `.github/copilot-instructions.md` を読みます（[ドキュメント](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions)）。 |
