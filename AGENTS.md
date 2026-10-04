@@ -13,7 +13,7 @@ One stdlib-only Python 3.9+ file: `scripts/solo.py`. An MCP server wrapper is `s
 
 1. Find out where you are running; do not assume. `python3 scripts/solo.py doctor [OWNER/REPO]` prints the environment, the token source
    (never the token), API reachability and which admin endpoints the token can read. In a sandbox whose proxy refuses settings writes
-   (`not permitted through this proxy`), do not work around it: give the user the exact commands to run on their own machine.
+   (`not permitted through this proxy`), do not work around it. Say plainly what this session is (a cloud / app session, not the user's PC) and name the exact place to run the commands: the terminal on their PC, or Claude Code running on their PC. Never just say "locally" or "on your machine"; see SKILL.md, "Telling the user where to run it".
 2. `python3 scripts/solo.py audit OWNER/REPO` (exit 1 = at least one ❌). Summarise for the user in their language, ❌ first.
 3. `python3 scripts/solo.py apply OWNER/REPO` is a dry run: show the plan. Run it with `--yes` only after the user agrees.
    Opt-in items (`pages`, `discussions`, `topics`, `workflow-permissions`, `tag-guard`, `labels`, `community-files`) need `--only <id>`

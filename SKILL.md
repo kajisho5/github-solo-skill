@@ -25,23 +25,39 @@ Everything below applies to every agent; only the way you detect the environment
 ## Step 0: find out where you are running (never assume)
 
 Advice depends on it: a cloud container can read GitHub but its network proxy may refuse settings writes,
-while Claude Code on the user's own machine can run `apply --yes` directly. Determine it from facts:
+while Claude Code running on the user's PC can run `apply --yes` directly. Determine it from facts:
 
 1. Run `SOLO doctor` and read the `environment` row (or check the variables yourself:
    `CLAUDE_CODE_REMOTE=true` / `CCR_AGENT_PROXY_ENABLED` → managed cloud container;
-   `CLAUDECODE=1` without those → Claude Code on this machine; neither → another agent, plain shell or CI: then
+   `CLAUDECODE=1` without those → Claude Code running on this PC; neither → another agent, plain shell or CI: then
    judge by facts (`doctor` shows whether the API is reachable and which admin endpoints answer 403 "not permitted through this proxy").
    `CLAUDE_CODE_ENTRYPOINT` shows how the session was started (observed values: `remote_mobile` in a cloud session started
-   from the app, `cli` in Claude Code on a user's own machine); report the raw value and do not guess what an unfamiliar value means: say it is unknown.
+   from the app, `cli` in Claude Code running on a user's PC); report the raw value and do not guess what an unfamiliar value means: say it is unknown.
 2. Tell the user in one line what you detected ("This is a cloud Claude Code session, not your computer").
 3. Then tailor:
    - **Cloud container:** audits (reads) usually work; settings writes may fail with 403 "not permitted through this
      proxy". Do not retry or route around it. Read the environment's documentation (the `read_documentation` tool in
-     Claude Code cloud sessions) before explaining, then give the user the exact commands to run on their own machine.
+     Claude Code cloud sessions) before explaining, then hand the user the commands as described in "Telling the user where to run it" below.
    - **Claude Code on the user's machine / plain shell:** run the workflow below directly.
    - **Unknown:** ask the user where they want the changes to run.
 4. Repos outside the session's allowed set are not reachable by API from a cloud session even for reads; say so
    instead of guessing the repo's state.
+
+## Telling the user where to run it (never say just "locally" or "on your machine")
+
+Users often cannot tell an app / cloud session from Claude Code on their own PC, so a vague "run it on your machine" leaves them lost. Always:
+
+1. **Say what this session is**, from the facts you detected, in one sentence: for example "This is a cloud session started from the Claude app. It is not
+   your PC." / "This is Claude Code running on your PC (CLI)." If you could not tell, say that and ask which one they use.
+2. **Name the exact place to run the commands**, and contrast it with this session. Use wording like:
+   - "in the terminal on your PC (PowerShell on Windows, Terminal on macOS)"
+   - "in Claude Code that you run on your PC (the CLI), not in this app session"
+   - "in the Codex app on your PC" (when that is the surface), naming the screen or menu when you know it, and saying "I could not verify this screen" when you do not.
+   Avoid the bare phrases "locally", "on your machine", "手元で". In Japanese say for example 「あなたのPCのターミナル（PowerShell）で」「PCで起動した Claude Code（CLI）で。このアプリのセッションではありません」.
+3. **Give one copy-paste block addressed to that place** (what to paste, where), not scattered commands. Put secrets-handling steps (login, token) as separate lines the
+   user does themselves, and never ask for the token in chat.
+4. **Say what you need back** (for example "paste the table that ends with `RESULT:`").
+5. On Windows mention the shell: `python` instead of `python3`, and Git Bash needs API paths without the leading slash.
 
 ## Workflow (follow in order)
 

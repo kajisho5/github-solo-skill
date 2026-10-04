@@ -163,6 +163,10 @@ class VoiceboothScenario(Base):
             data = json.loads(p.stdout)
             self.assertEqual(data["environment"]["kind"], kind)
             self.assertEqual(any(c["name"] == "cloud note" for c in data["checks"]), note)
+            if note:  # the wording must name the place, never just "your machine"
+                text = " ".join(c["message"] for c in data["checks"] if c["name"] == "cloud note")
+                self.assertIn("on your PC", text)
+                self.assertNotIn("own machine", text)
 
     def test_no_snapshot_for_dry_run_or_noop(self):
         self.run_solo("apply", self.slug)

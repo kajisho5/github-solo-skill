@@ -154,6 +154,7 @@ JA = [
     ("a push to", "push:"), ("committing files there can trigger it", "ここへファイルをコミットすると発火しうる"),
     ("(local only; review and commit it yourself)", "（ローカルのみ。内容を確認してコミットしてください）"),
     ("committed", "コミット済み:"), ("hint:", "ヒント:"),
+    ("(this is not your PC); run solo.py in a terminal on your PC, or in Claude Code running on your PC", "（ここはあなたのPCではありません）。あなたのPCのターミナル、またはPCで動かしている Claude Code で solo.py を実行してください"),
     ("no workflow creates releases on push to", "push でリリースを作るワークフローなし:"),
     (".github/release.yml missing", ".github/release.yml がありません"),
     ("SECURITY.md missing", "SECURITY.md がありません"),
@@ -1726,7 +1727,8 @@ def latest_snapshot(owner, repo):
 
 def hint_for(r):
     if "proxy" in r.message.lower():
-        return "a proxy/sandbox in front of the API blocks this path; run solo.py from your own machine"
+        return ("a proxy/sandbox in front of the API blocks this path (this is not your PC); run solo.py in a terminal on your PC, "
+                "or in Claude Code running on your PC")
     if r.status == 403:
         return "token lacks permission or the feature is not available on this plan (references/troubleshooting.md)"
     if r.status == 404:
@@ -1995,8 +1997,8 @@ def detect_environment(env=None):
         kind, sig = "local-claude-code", ["CLAUDECODE"]
     else:
         kind = "shell"
-    text = {"cloud": "Claude Code in a managed cloud container (not your machine)",
-            "local-claude-code": "Claude Code on this machine",
+    text = {"cloud": "Claude Code in a managed cloud container (this session is not your PC)",
+            "local-claude-code": "Claude Code running on this PC (CLI)",
             "shell": "no Claude Code signal (another agent, a plain shell or CI)"}[kind]
     return {"kind": kind, "entrypoint": entry or None, "signals": sig, "text": text}
 
@@ -2020,7 +2022,7 @@ def cmd_doctor(args):
     add(OK, "environment", "%s%s" % (envinfo["text"], (" [entrypoint=%s]" % envinfo["entrypoint"]) if envinfo["entrypoint"] else ""))
     if envinfo["kind"] == "cloud":
         add(WARN, "cloud note", "this environment's network proxy may refuse admin API calls (settings writes); if you see "
-            "'not permitted through this proxy', run solo.py on your own machine instead")
+            "'not permitted through this proxy', run solo.py in a terminal on your PC (or in Claude Code running on your PC), not in this session")
     v = sys.version_info
     add(OK if v >= (3, 9) else BAD, "python", "%d.%d.%d%s" % (v[0], v[1], v[2], "" if v >= (3, 9) else " (3.9+ required)"))
     for tool, required in (("git", False), ("gh", False)):

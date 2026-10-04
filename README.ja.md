@@ -114,7 +114,7 @@ flowchart LR
 | `audit --all-repos OWNER [--json]` | オーナーの全リポ（アーカイブ・fork 除く）を1行ずつ要約 |
 | `apply [OWNER/REPO] [--yes] [--only ids] [--skip ids] [--pages-path / \| /docs] [--topics a,b] [--commit-files] [--accept-release-risk] [--json]` | ドライランで計画表示、`--yes` で実行 |
 | `restore [OWNER/REPO] [--yes] [--snapshot FILE]` | 直前の `apply --yes` が変更した内容を元に戻す |
-| `doctor [OWNER/REPO] [--json]` | 実行場所（クラウドコンテナ / 手元の Claude Code / 通常のシェル）、トークンの出所（値は表示しない）、API への到達、各管理系エンドポイントへのアクセスを確認 |
+| `doctor [OWNER/REPO] [--json]` | 実行場所（クラウドコンテナ / PC 上の Claude Code / 通常のシェル）、トークンの出所（値は表示しない）、API への到達、各管理系エンドポイントへのアクセスを確認 |
 | `links [OWNER/REPO] [--markdown]` | 最新版の固定ダウンロード URL（`/releases/latest/download/<asset>`）。使えない場合（Pre-release のみ、アセット名にバージョン入り）はその理由 |
 | `links --workflow` | バージョン無しアセットも一緒にアップロードするリリースワークフローの雛形 |
 | `dependabot [OWNER/REPO]` | `dependabot.yml` を生成して標準出力へ |
