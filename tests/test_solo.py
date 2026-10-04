@@ -79,6 +79,7 @@ class VoiceboothScenario(Base):
             "delete-branch-on-merge": "warn", "discussions": "warn", "pages": "warn",
             "labels": "warn", "community-files": "warn",
             "releases": "warn", "release-workflow": "warn", "release-tag-format": "ok", "release-notes-config": "warn",
+            "actions-can-create-prs": "ok", "ci-status": "na", "actions-hardening": "ok", "open-alerts": "na", "issues-enabled": "ok",
             "description": "ok", "topics": "ok", "license": "ok", "security-policy": "ok",
             "social-preview": "ok",
         }
@@ -518,7 +519,7 @@ class ConfiguredScenario(Base):
     def test_everything_ok(self):
         rc, data, st = self.audit()
         self.assertEqual(rc, 0)
-        self.assertEqual(data["summary"], {"ok": 26, "warn": 0, "bad": 0, "na": 0}, self.status(st))
+        self.assertEqual(data["summary"], {"ok": 31, "warn": 0, "bad": 0, "na": 0}, self.status(st))
 
     def test_dry_run_reports_no_changes(self):
         rc, out, _ = self.run_solo("apply", self.slug)
@@ -765,6 +766,76 @@ class Helpers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExtraChecks(Base):
+    slug = "seventhwell/tidy"
+
+    @staticmethod
+    def state():
+        s = fixtures.configured()
+        s["files"][".github/workflows/rp.yml"] = ("name: rp\non:\n  push:\n    branches: [main]\npermissions:\n  contents: write\n  pull-requests: write\n"
+                                                  "jobs:\n  r:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: googleapis/release-please-action@" + "a" * 40 + "\n")
+        s["tree"].append(".github/workflows/rp.yml")
+        return s
+
+    def test_actions_cannot_create_prs_is_found_fixed_and_restored(self):
+        _, _, st = self.audit()
+        self.assertEqual(st["actions-can-create-prs"]["status"], "warn")
+        self.assertIn("not permitted to create or approve pull requests", st["actions-can-create-prs"]["message"])
+        rc, out, _ = self.run_solo("apply", self.slug)
+        self.assertIn("- actions-can-create-prs:", out)  # opt-in
+        self.assertEqual(self.writes(), [])
+        rc, out, err = self.run_solo("apply", self.slug, "--yes", "--only", "actions-can-create-prs")
+        self.assertEqual(rc, 0, out + err)
+        self.assertEqual(self.writes(), [("PUT", "/repos/seventhwell/tidy/actions/permissions/workflow",
+                                          {"default_workflow_permissions": "read", "can_approve_pull_request_reviews": True})])
+        _, _, st = self.audit()
+        self.assertEqual(st["actions-can-create-prs"]["status"], "ok")
+        self.run_solo("restore", self.slug, "--yes")
+        self.assertFalse(self.mock.state["workflow_perms"]["can_approve_pull_request_reviews"])
+
+    def test_failing_ci_open_alerts_issues_off_drafts_and_pages_https(self):
+        st_ = self.mock.state
+        st_["runs"] = [{"workflow_id": 1, "name": "ci", "path": ".github/workflows/ci.yml", "conclusion": "failure",
+                        "html_url": "https://github.com/x/actions/runs/9"},
+                       {"workflow_id": 1, "name": "ci", "path": ".github/workflows/ci.yml", "conclusion": "success", "html_url": "u"},
+                       {"workflow_id": 2, "name": "dep", "path": "dynamic/dependabot/x", "conclusion": "failure", "html_url": "u"}]
+        st_["alerts_open"] = [{"security_advisory": {"severity": "high"}}, {"security_advisory": {"severity": "high"}},
+                              {"security_advisory": {"severity": "low"}}]
+        st_["repo"]["has_issues"] = False
+        st_["releases"].append({"tag_name": "v2", "prerelease": False, "draft": True, "assets": []})
+        st_["pages"]["https_enforced"] = False
+        _, _, st = self.audit()
+        self.assertEqual(st["ci-status"]["status"], "warn")  # newest run of ci failed; Dependabot's dynamic run ignored
+        self.assertIn("ci", st["ci-status"]["message"])
+        self.assertEqual(st["open-alerts"]["status"], "warn")
+        self.assertIn("2 high, 1 low", st["open-alerts"]["message"])
+        self.assertEqual(st["issues-enabled"]["status"], "warn")
+        self.assertIn("1 draft release(s)", " ".join(st["releases"]["details"]))
+        self.assertEqual(st["pages"]["status"], "warn")
+        self.assertIn("HTTPS", st["pages"]["message"])
+
+    def test_actions_hardening(self):
+        bad = ("name: x\non:\n  pull_request_target:\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n"
+               "      - uses: actions/checkout@" + "b" * 40 + "\n        with:\n          ref: ${{ github.event.pull_request.head.sha }}\n"
+               "      - run: echo \"${{ github.event.pull_request.title }}\"\n"
+               "      - run: |\n          echo ${{ github.head_ref }}\n")
+        self.mock.state["files"][".github/workflows/bad.yml"] = bad
+        self.mock.state["tree"].append(".github/workflows/bad.yml")
+        _, _, st = self.audit()
+        self.assertEqual(st["actions-hardening"]["status"], "warn")
+        text = " ".join(st["actions-hardening"]["details"])
+        self.assertIn("no permissions: block", text)
+        self.assertIn("pull_request_target checks out", text)
+        self.assertIn("expanded inside a run: script", text)
+
+    def test_hardening_helpers(self):
+        safe = ("permissions:\n  contents: read\njobs:\n  j:\n    steps:\n      - env:\n          T: ${{ github.event.pull_request.title }}\n"
+                "        run: echo \"$T\"\n")
+        self.assertEqual(solo.workflow_hardening_gaps(safe), [])
+        self.assertEqual(list(solo.run_script_lines("steps:\n  - run: echo a\n  - run: |\n      line1\n      line2\n  - name: x\n")),
+                         ["echo a", "      line1", "      line2"])
 
 
 class McpServer(Base):

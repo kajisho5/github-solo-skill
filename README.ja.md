@@ -78,7 +78,7 @@ flowchart LR
 
 <p align="center"><img src="assets/demo-apply-plan.png" alt="apply は書き込む前に、実際の API 呼び出しと各変更の内容を表示する" width="900"></p>
 
-## チェック項目（26個）
+## チェック項目（31個）
 
 各項目の API と戻し方：[references/checks.md](references/checks.md)、または `solo.py explain CHECK_ID`
 
@@ -88,6 +88,9 @@ flowchart LR
 | | `secret-scanning`、`push-protection`、`private-vuln-reporting`、`codeql`（public リポ） | デフォルト |
 | | `dependabot-config`：検出したエコシステムから `.github/dependabot.yml` を生成（monthly、エコシステムごとに1 PR へ集約）。既存ファイルは比較のみ | デフォルト |
 | | `actions-pinning`：ワークフローの action が SHA 固定か | 報告のみ |
+| | `actions-hardening`：`permissions:` 無し、PR のコードをチェックアウトする `pull_request_target`、`run:` 内での信頼できない値の展開（テキストベースの簡易判定） | 報告のみ |
+| | `actions-can-create-prs`：Actions が PR を作れない設定だと release-please / create-pull-request が失敗する | **opt-in** |
+| | `open-alerts`：未対応の Dependabot alert（重大度別） | 報告のみ |
 | | `workflow-permissions`：`GITHUB_TOKEN` のデフォルトを read に | **opt-in** |
 | **1人開発** | `solo-blocker`：1人のリポを詰ませる承認必須ルール | ❌ 検出のみ |
 | | `guardrail`：ruleset `solo-guard`（デフォルトブランチの削除・force push 禁止。PR 要件なし） | デフォルト |
@@ -97,10 +100,11 @@ flowchart LR
 | **配布** | `pages`（公開フォルダを自動判定、homepage も設定） | **opt-in** |
 | | `releases`：リリースの有無、ダウンロードできるアセットがある latest、アセット名にバージョンが入っていないか | 報告のみ |
 | | `release-workflow`：デフォルトブランチへの push でリリースが走らないか | 報告のみ |
+| | `ci-status`：各ワークフローのデフォルトブランチでの最新の実行が成功しているか | 報告のみ |
 | | `release-tag-format`：最新のタグが素直な `vX.Y.Z` か（release-please は既定でパッケージ名が付く） | 報告のみ |
 | | `release-notes-config`：`.github/release.yml` | デフォルト |
 | **メタ情報** | `security-policy`：private vulnerability reporting へ案内する `SECURITY.md` | デフォルト |
-| | `description`、`license`（自動生成しない）、`social-preview`（API 不可） | 報告のみ |
+| | `description`、`license`（自動生成しない）、`social-preview`（API 不可）、`issues-enabled` | 報告のみ |
 | | `topics`（`--topics a,b`）、`labels`（`release.yml` 用）、`community-files`（Issue / PR テンプレート、CONTRIBUTING） | **opt-in** |
 
 **private リポ：** GitHub Secret Protection / Code Security は有料なので、`secret-scanning`・`push-protection`・`private-vuln-reporting`・`codeql` は理由付きの ➖ です。ruleset も有料プランが必要なので `guardrail` / `tag-guard` も ➖ です。Dependabot の alerts と updates は無料なので適用します。

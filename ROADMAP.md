@@ -5,7 +5,7 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 ## Done (0.1)
 
 - `audit` (text + `--json`, exit 1 on ❌), `apply` (dry run, `--yes`, `--only`, `--skip`), `links`, `dependabot`.
-- 26 checks across Security / Solo development / Distribution / Metadata (see [references/checks.md](references/checks.md)).
+- 31 checks across Security / Solo development / Distribution / Metadata (see [references/checks.md](references/checks.md)).
 - Solo-blocker detection (classic protection and rulesets), `solo-guard` ruleset, release-on-push warning.
 - Mock GitHub API test suite, CI on Python 3.9 and 3.13, release-please.
 - `--lang ja`, `apply --json`, `audit --all-repos`, `audit --github-annotations`, `links --markdown`.
@@ -13,6 +13,7 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
 - Opt-in `tag-guard` ruleset for `v*` tags.
 - `doctor`, and `restore` (every `apply --yes` saves an undo snapshot).
 - `AGENTS.md`, `.github/copilot-instructions.md` and an MCP stdio server (`scripts/solo_mcp.py`, 9 tools; apply / restore are dry runs unless `confirm`).
+- Gap checks found while releasing this project: `release-tag-format`, release without assets, `actions-can-create-prs`, `ci-status`, `actions-hardening`, `open-alerts`, `issues-enabled`, draft releases and Pages HTTPS notes.
 - `--profile`, 0-100 score, before->after in dry-run plans, `ci-template`, GitHub Enterprise Server GraphQL routing (unit-tested URL mapping, not run against a real GHES).
 - README with real screenshots, `docs/` (why-solo, recipes, faq), CONTRIBUTING, issue / PR templates, logo and social preview (`assets/`).
 - `explain`, `badges`, `links --workflow`, `audit --quiet / --ignore / --fail-on`; opt-in `labels` and `community-files`.
@@ -40,6 +41,8 @@ Status of `0.x`. Everything under "Done" is covered by `python -m unittest`.
   What is left is intentional: opt-in `discussions`, `pages`, `labels`; `releases` (none yet); `release-workflow` (the release-please workflow, reported on purpose).
 
 ## Next
+
+- **Live-verify the new checks:** `actions-can-create-prs` apply / undo, `ci-status`, `open-alerts` (the API status used when alerts are off), `issues-enabled`, Pages `https_enforced`. They are covered by mock tests only.
 
 - **Live-verify the remainder:** an organization-owned repo (org policies can change the workflow-permissions endpoint's answer, e.g. 409), and `--commit-files` together
   with the release-on-push guard on a repo that really has such a workflow.

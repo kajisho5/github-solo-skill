@@ -48,7 +48,7 @@ DEFAULT_APPLY = [
     "security-policy",
 ]
 OPT_IN_APPLY = ["workflow-permissions", "discussions", "pages", "topics", "tag-guard", "labels",
-                "community-files"]
+                "community-files", "actions-can-create-prs"]
 OPT_IN_WHY = {
     "workflow-permissions": "can break existing workflows that rely on a write token",
     "discussions": "changes the public face of the repo",
@@ -57,6 +57,7 @@ OPT_IN_WHY = {
     "tag-guard": "blocks deleting / force-moving v* tags; may break workflows that re-create tags",
     "labels": "adds labels the generated release.yml categories use (visible in the issue tracker)",
     "community-files": "adds issue / PR templates and CONTRIBUTING.md (public-facing once pushed)",
+    "actions-can-create-prs": "lets workflows open AND approve pull requests (needed by release-please / create-pull-request)",
 }
 ALL_APPLY = DEFAULT_APPLY + OPT_IN_APPLY
 
@@ -106,6 +107,7 @@ JA = [
     ("Next: solo.py apply", "次の手順: solo.py apply"),
     ("(dry run; add --yes to execute)", "（ドライラン。実行するには --yes）"),
     ("No changes needed.", "変更は不要です。"),
+    ("is not permitted to create or approve pull requests", "は PR を作成・承認できません"),
     ("carries the prefix", "にはプレフィックスが付いています"), ("it has no assets, so there is nothing to download directly", "ただしアセットが無く、直接ダウンロードできるものがありません"),
     ("Dry run: nothing was changed. Re-run with --yes to execute.",
      "ドライラン: 何も変更していません。実行するには --yes を付けて再実行してください。"),
@@ -360,6 +362,7 @@ class Ctx(object):
         self.profile = "app"
         self.log = []
         self.undo = []
+        self.draft_count = 0
         self._info = None
         self._tree = None
         self._files = {}
@@ -1218,6 +1221,9 @@ def check_pages(ctx):
     id = "pages"
     r = ctx.get(ctx.p("/pages"))
     if r.ok and isinstance(r.data, dict):
+        if r.data.get("https_enforced") is False and str(r.data.get("html_url", "")).startswith("https"):
+            return [R(id, DIST, WARN, "enabled (%s) but HTTPS is not enforced (Settings -> Pages -> Enforce HTTPS)"
+                      % r.data.get("html_url", ""))]
         return [R(id, DIST, OK, "enabled: %s" % r.data.get("html_url", ""))]
     if r.status == 404:
         path, note = pages_source(ctx)
@@ -1230,10 +1236,19 @@ def fetch_releases(ctx):
     r = ctx.get(ctx.p("/releases"), per_page=100)
     if not r.ok or not isinstance(r.data, list):
         return None, r
+    ctx.draft_count = sum(1 for x in r.data if x.get("draft"))
     return [x for x in r.data if not x.get("draft")], r
 
 
 def check_releases(ctx):
+    out = _check_releases(ctx)
+    n = getattr(ctx, "draft_count", 0)
+    if n and out:
+        out[0].details.append("%d draft release(s) were never published" % n)
+    return out
+
+
+def _check_releases(ctx):
     id = "releases"
     rels, r = fetch_releases(ctx)
     if rels is None:
@@ -1336,6 +1351,128 @@ def check_community_files(ctx):
               apply=id, actionable=True, data={"missing": missing})]
 
 
+PR_CREATORS = [(r"release-please", "release-please"), (r"peter-evans/create-pull-request", "peter-evans/create-pull-request"),
+               (r"gh\s+pr\s+create", "gh pr create"), (r"pulls\.create|createPullRequest", "pulls.create")]
+
+
+def check_actions_can_create_prs(ctx):
+    id = "actions-can-create-prs"
+    users = []
+    for path, text in ctx.workflows().items():
+        for pat, name in PR_CREATORS:
+            if re.search(pat, text):
+                users.append((path, name))
+                break
+    if not users:
+        return [R(id, SEC, OK, "no workflow opens pull requests")]
+    r = ctx.get(ctx.p("/actions/permissions/workflow"))
+    if not (r.ok and isinstance(r.data, dict)):
+        return [unreadable(id, SEC, r, apply=id)]
+    names = ", ".join(sorted({n for _, n in users}))
+    if r.data.get("can_approve_pull_request_reviews"):
+        return [R(id, SEC, OK, "workflows may create and approve pull requests (used by %s)" % names)]
+    return [R(id, SEC, WARN,
+              "%s opens pull requests but 'Allow GitHub Actions to create and approve pull requests' is off: the run fails with "
+              "\"GitHub Actions is not permitted to create or approve pull requests\" (opt-in fix)" % names,
+              apply=id, actionable=True, data={"default": r.data.get("default_workflow_permissions") or "read"},
+              details=["Settings -> Actions -> General -> Workflow permissions"])]
+
+
+def check_ci_status(ctx):
+    id = "ci-status"
+    r = ctx.get(ctx.p("/actions/runs"), branch=ctx.branch, status="completed", per_page=50)
+    if not (r.ok and isinstance(r.data, dict)):
+        return [R(id, DIST, NA, "could not read workflow runs (%s)" % r.describe())]
+    runs = [x for x in r.data.get("workflow_runs", []) if str(x.get("path", "")).startswith(".github/workflows/")]
+    if not runs:
+        return [R(id, DIST, NA, "no workflow runs on %s yet" % ctx.branch)]
+    latest = {}
+    for x in runs:  # newest first
+        latest.setdefault(x.get("workflow_id") or x.get("name"), x)
+    bad = [x for x in latest.values() if x.get("conclusion") in ("failure", "timed_out", "startup_failure")]
+    if bad:
+        return [R(id, DIST, WARN, "%d of %d workflow(s) failed on their latest run on %s: %s" % (
+            len(bad), len(latest), ctx.branch, ", ".join(sorted(str(x.get("name")) for x in bad))),
+            details=[str(x.get("html_url", "")) for x in bad])]
+    return [R(id, DIST, OK, "the latest run of each workflow on %s passed (%d)" % (ctx.branch, len(latest)))]
+
+
+UNTRUSTED_EXPR = re.compile(
+    r"\$\{\{[^}]*(github\.event\.(issue|pull_request|comment|review|review_comment|discussion)\.(title|body)"
+    r"|github\.event\.head_commit\.message|github\.event\.pull_request\.head\.(ref|label)|github\.head_ref)[^}]*\}\}")
+
+
+def run_script_lines(text):
+    """Lines of `run:` scripts (inline or block) in a workflow file."""
+    in_block, key_col = False, 0
+    for line in text.splitlines():
+        if in_block:
+            if not line.strip():
+                continue
+            if _indent(line) > key_col:
+                yield line
+                continue
+            in_block = False
+        m = re.match(r"^(\s*)(-\s+)?run:\s*(.*)$", line)
+        if not m:
+            continue
+        key_col = len(m.group(1)) + (2 if m.group(2) else 0)
+        rest = m.group(3).strip()
+        if rest in ("|", "|-", "|+", ">", ">-", ">+"):
+            in_block = True
+        elif rest:
+            yield rest
+
+
+def workflow_hardening_gaps(text):
+    gaps = []
+    if not re.search(r"^\s*permissions\s*:", text, re.M):
+        gaps.append("no permissions: block (the repo default token permission applies)")
+    if "pull_request_target" in text and re.search(
+            r"ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.(sha|ref)|ref:\s*\$\{\{\s*github\.head_ref", text):
+        gaps.append("pull_request_target checks out the pull request's code (privileged workflow running untrusted code)")
+    if any(UNTRUSTED_EXPR.search(l) for l in run_script_lines(text)):
+        gaps.append("an untrusted value (PR / issue title or body, branch name, commit message) is expanded inside a run: script; "
+                    "pass it through env: instead")
+    return gaps
+
+
+def check_actions_hardening(ctx):
+    id = "actions-hardening"
+    wfs = ctx.workflows()
+    if not wfs:
+        return [R(id, SEC, NA, "no workflows")]
+    det = []
+    for path, text in sorted(wfs.items()):
+        for g in workflow_hardening_gaps(text):
+            det.append("%s: %s" % (path, g))
+    if det:
+        return [R(id, SEC, WARN, "%d gap(s) in workflow files (text heuristic)" % len(det), details=det)]
+    return [R(id, SEC, OK, "workflows declare permissions and do not expand untrusted values in scripts")]
+
+
+def check_open_alerts(ctx):
+    id = "open-alerts"
+    r = ctx.get(ctx.p("/dependabot/alerts"), state="open", per_page=100)
+    if not (r.ok and isinstance(r.data, list)):
+        return [R(id, SEC, NA, "cannot read Dependabot alerts (%s): needs that permission, or alerts are off" % r.describe())]
+    if not r.data:
+        return [R(id, SEC, OK, "no open Dependabot alerts")]
+    sev = {}
+    for a in r.data:
+        k = ((a.get("security_advisory") or {}).get("severity") or "unknown")
+        sev[k] = sev.get(k, 0) + 1
+    return [R(id, SEC, WARN, "%d open Dependabot alert(s): %s (https://github.com/%s/security/dependabot)" % (
+        len(r.data), ", ".join("%d %s" % (v, k) for k, v in sorted(sev.items())), ctx.slug))]
+
+
+def check_issues_enabled(ctx):
+    id = "issues-enabled"
+    if ctx.info.get("has_issues") is False:
+        return [R(id, META, WARN, "Issues are off, so people cannot report problems or ask questions (Settings -> General -> Features)")]
+    return [R(id, META, OK, "Issues are on")]
+
+
 def check_meta(ctx):
     out = []
     i = ctx.info
@@ -1374,7 +1511,8 @@ CHECKS = [check_alerts, check_security_updates, check_secret_scanning, check_pvr
           check_codeql, check_dependabot_config, check_pinning_and_release,
           check_workflow_permissions, check_solo_blocker, check_guardrail, check_tag_guard,
           check_delete_branch, check_discussions, check_pages, check_releases,
-          check_release_tag_format, check_release_notes, check_meta, check_labels, check_community_files]
+          check_release_tag_format, check_release_notes, check_meta, check_labels, check_community_files,
+          check_actions_can_create_prs, check_ci_status, check_actions_hardening, check_open_alerts, check_issues_enabled]
 
 
 PROFILES = ["app", "library", "site", "docs"]
@@ -1549,6 +1687,13 @@ def plan_for(ctx, res, opts):
                                lambda st: {"homepage": st.get("pages_url") or predicted},
                                undo=_undo("PATCH", o.p(), {"homepage": ""})))
         return acts
+    if id == "actions-can-create-prs":
+        cur = res.data.get("default", "read")
+        return [Action(id, "api", "allow GitHub Actions to create and approve pull requests (default GITHUB_TOKEN stays %s)" % cur,
+                       "PUT", o.p("/actions/permissions/workflow"),
+                       {"default_workflow_permissions": cur, "can_approve_pull_request_reviews": True},
+                       undo=_undo("PUT", o.p("/actions/permissions/workflow"),
+                                  {"default_workflow_permissions": cur, "can_approve_pull_request_reviews": False}))]
     if id == "tag-guard":
         body = {"name": "solo-tag-guard", "target": "tag", "enforcement": "active",
                 "conditions": {"ref_name": {"include": ["refs/tags/v*"], "exclude": []}},
@@ -1624,6 +1769,7 @@ DIFF_TEXT = {
     "tag-guard": "v* tags: deletable / movable -> protected",
     "delete-branch-on-merge": "delete branch on merge: off -> on",
     "workflow-permissions": "default GITHUB_TOKEN: write -> read", "discussions": "Discussions: off -> on",
+    "actions-can-create-prs": "Actions may create / approve pull requests: off -> on",
 }
 
 

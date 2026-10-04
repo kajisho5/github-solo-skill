@@ -78,7 +78,7 @@ flowchart LR
 
 <p align="center"><img src="assets/demo-apply-plan.png" alt="apply prints the exact API calls and what each one changes before anything is written" width="900"></p>
 
-## What is checked (26 checks)
+## What is checked (31 checks)
 
 Details, the API used and how to undo each one: [references/checks.md](references/checks.md), or `solo.py explain CHECK_ID`.
 
@@ -88,6 +88,9 @@ Details, the API used and how to undo each one: [references/checks.md](reference
 | | `secret-scanning`, `push-protection`, `private-vuln-reporting`, `codeql` (public repos) | default |
 | | `dependabot-config`: generates `.github/dependabot.yml` from the detected ecosystems (monthly, one grouped PR each); an existing file is only compared | default |
 | | `actions-pinning`: workflow actions pinned to a commit SHA | report only |
+| | `actions-hardening`: workflows without `permissions:`, `pull_request_target` checking out PR code, untrusted values expanded in `run:` (text heuristic) | report only |
+| | `actions-can-create-prs`: release-please / create-pull-request fail when Actions may not create PRs | **opt-in** |
+| | `open-alerts`: open Dependabot alerts by severity | report only |
 | | `workflow-permissions`: default `GITHUB_TOKEN` read-only | **opt-in** |
 | **Solo development** | `solo-blocker`: approval-required rules that lock out a one-person repo | ❌ detect only |
 | | `guardrail`: ruleset `solo-guard` (no delete / force-push of the default branch, no PR requirement) | default |
@@ -97,10 +100,11 @@ Details, the API used and how to undo each one: [references/checks.md](reference
 | **Distribution** | `pages` (folder auto-detected, homepage filled in) | **opt-in** |
 | | `releases`: any release, a "latest" with downloadable assets, asset names without versions | report only |
 | | `release-workflow`: a push to the default branch may create a release | report only |
+| | `ci-status`: the latest run of each workflow on the default branch passed | report only |
 | | `release-tag-format`: the newest tag is a plain `vX.Y.Z` (release-please adds the package name by default) | report only |
 | | `release-notes-config`: `.github/release.yml` | default |
 | **Metadata** | `security-policy`: `SECURITY.md` pointing to private vulnerability reporting | default |
-| | `description`, `license` (never generated), `social-preview` (no API) | report only |
+| | `description`, `license` (never generated), `social-preview` (no API), `issues-enabled` | report only |
 | | `topics` (`--topics a,b`), `labels` (for `release.yml`), `community-files` (issue / PR templates, CONTRIBUTING) | **opt-in** |
 
 **Private repos:** GitHub Secret Protection / Code Security are paid, so `secret-scanning`, `push-protection`, `private-vuln-reporting` and `codeql` are ➖ with the reason; rulesets need a paid plan too (➖ for `guardrail` / `tag-guard`). Dependabot alerts and updates stay free and are applied.

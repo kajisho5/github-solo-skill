@@ -193,6 +193,12 @@ class MockGitHub(object):
             before = len(s["rulesets"])
             s["rulesets"] = [r for r in s["rulesets"] if str(r["id"]) != m.group(1)]
             return (204, None) if len(s["rulesets"]) < before else (404, {"message": "Not Found"})
+        if sub == "/actions/runs" and method == "GET":
+            return 200, {"workflow_runs": s.get("runs", [])}
+        if sub == "/dependabot/alerts" and method == "GET":
+            if "alerts_open" in s:
+                return 200, s["alerts_open"]
+            return 404, {"message": "Not Found"}
         if sub == "/labels":
             if method == "GET":
                 return 200, [{"name": n} for n in s.get("labels", [])]

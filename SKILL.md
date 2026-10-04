@@ -80,7 +80,7 @@ Users often cannot tell an app / cloud session from Claude Code on their own PC,
      asked for a diagnosis, ask first).
    - **Opt-in items are applied only with `--only` and only after asking about each one**, because
      they change the public face or can break workflows: `pages`, `discussions`, `topics`
-     (`--topics a,b`), `workflow-permissions`, `tag-guard`, `labels`, `community-files`. Example:
+     (`--topics a,b`), `workflow-permissions`, `tag-guard`, `labels`, `community-files`, `actions-can-create-prs`. Example:
      `SOLO apply OWNER/REPO --yes --only pages --pages-path /docs`.
    - Never try to fix a ❌ yourself with extra API calls. Explain it, show the printed commands, and
      let the user decide. (Removing an approval rule is the user's call.)
@@ -125,7 +125,8 @@ Full list with API, reason and how to undo each: `references/checks.md`. Summary
 | Security | `dependabot-alerts`, `dependabot-security-updates` | yes |
 | | `secret-scanning`, `push-protection`, `private-vuln-reporting`, `codeql` (public repos only) | yes |
 | | `dependabot-config` (generates `.github/dependabot.yml`) | yes |
-| | `actions-pinning` (report only) | n/a |
+| | `actions-pinning`, `actions-hardening`, `open-alerts` (report only) | n/a |
+| | `actions-can-create-prs` (let Actions open / approve PRs; release-please needs it) | **opt-in** |
 | | `workflow-permissions` (default GITHUB_TOKEN = read) | **opt-in** |
 | Solo | `solo-blocker` (❌ detect only) | never |
 | | `guardrail` (ruleset `solo-guard`: no delete / force-push of the default branch) | yes |
@@ -133,12 +134,12 @@ Full list with API, reason and how to undo each: `references/checks.md`. Summary
 | | `delete-branch-on-merge` | yes |
 | | `discussions` | **opt-in** |
 | Distribution | `pages` | **opt-in** |
-| | `releases`, `release-workflow`, `release-tag-format` (report only) | n/a |
+| | `releases`, `release-workflow`, `release-tag-format`, `ci-status` (report only) | n/a |
 | | `release-notes-config` (`.github/release.yml`) | yes |
 | Metadata | `security-policy` (`SECURITY.md`) | yes |
 | | `topics` | **opt-in** (`--topics`) |
 | | `labels` (create the labels `release.yml` uses), `community-files` (issue / PR templates, CONTRIBUTING) | **opt-in** |
-| | `description`, `license`, `social-preview` (report only; license is the user's decision, social preview has no API) | n/a |
+| | `description`, `license`, `social-preview`, `issues-enabled` (report only; license is the user's decision, social preview has no API) | n/a |
 
 Private repos: GitHub Secret Protection / Code Security are paid, so those rows show ➖ with the reason
 and are skipped. Dependabot alerts / security updates are free on private repos and still apply.

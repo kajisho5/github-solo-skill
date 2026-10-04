@@ -74,6 +74,23 @@ need `--only <id>`.
   Add `permissions: contents: write` (etc.) to those jobs first.
 - Undo: `PUT` with `"write"`. May answer 409 if an organization policy owns the setting.
 
+### actions-can-create-prs (opt-in)
+- Why: release-please, `peter-evans/create-pull-request`, `gh pr create` or `pulls.create` in a workflow fail with `GitHub Actions is not permitted to create or approve pull requests` when the repo setting
+  *Settings -> Actions -> General -> Workflow permissions -> Allow GitHub Actions to create and approve pull requests* is off (this exact failure was hit by this project's own release-please workflow).
+- Read: `can_approve_pull_request_reviews` from `GET /repos/{o}/{r}/actions/permissions/workflow`. ✅ when no workflow needs it or it is on.
+- Apply: `PUT` the same path with `{"default_workflow_permissions": <current value>, "can_approve_pull_request_reviews": true}`. Opt-in because it also lets a workflow approve PRs. Undo: the same call with `false` (`restore` does it).
+- Not yet exercised against the live API (the other workflow-permissions call was).
+
+### actions-hardening (report only, text heuristic)
+- Flags, per workflow file: no `permissions:` block anywhere (the repo default token permission applies); `pull_request_target` together with a checkout of the pull request's code;
+  and a value an outsider controls (PR / issue title or body, `head_ref`, branch name, commit message) expanded with `${{ }}` inside a `run:` script.
+- Why: GitHub's "Security hardening" guide recommends passing such values through an intermediate `env:` variable instead of expanding them in the script, and says workflows triggered by
+  `pull_request_target` must not check out untrusted code (https://docs.github.com/en/actions/reference/security/secure-use). The list of risky context fields here is a pragmatic subset, not the full list.
+- It reads text, not the workflow graph: it can miss things and can flag harmless code. Treat each row as a prompt to look.
+
+### open-alerts (report only)
+- `GET /repos/{o}/{r}/dependabot/alerts?state=open`: ⚠️ with the count by severity and the Security-tab URL; ➖ when the token cannot read alerts or alerts are off (the exact status the API uses for "off" was not confirmed).
+
 ## Solo development
 
 ### solo-blocker (❌ detect only, never changed)
@@ -121,6 +138,7 @@ need `--only <id>`.
 ## Distribution
 
 ### pages (opt-in)
+- Once enabled, a site whose `https_enforced` is false is reported ⚠️ (turn on *Enforce HTTPS* in Settings -> Pages).
 - Read: `GET /repos/{o}/{r}/pages` (404 = not set up).
 - Folder: `docs/index.html` → `/docs`; else root `index.html` → `/`; else `/` (GitHub then renders the README as the top page).
   Override with `--pages-path / | /docs`.
@@ -138,6 +156,10 @@ need `--only <id>`.
 - ✅ when the newest release's tag is a plain version (`v1.2.3`, `1.2.3`, `v1.2.3-rc.1`); ⚠️ when it carries a prefix or is not a version; ➖ when there is no release yet (and for `--profile site` / `docs`).
 - Fix for release-please: set `"include-component-in-tag": false` in `release-please-config.json` and, before the next release, create a `vX.Y.Z` tag on the same commit as the old one so release-please still finds the last release
   (the option changes the tag pattern it searches for; see the release-please manifest docs).
+
+### ci-status (report only)
+- Why: a workflow that has been red for days (a failed release job, a broken test run) is easy to miss when you work alone.
+- `GET /repos/{o}/{r}/actions/runs?branch={b}&status=completed`: the newest completed run of each workflow file on the default branch; ⚠️ if it failed / timed out. Dependabot's own update runs (not workflow files) are ignored. ➖ when there are no runs or Actions cannot be read.
 
 ### release-workflow (report only)
 - Why: pushing generated files to the default branch can run a workflow that publishes a release.
@@ -171,6 +193,9 @@ need `--only <id>`.
 - Why: issue templates, a PR template and CONTRIBUTING.md tell contributors what you need. Shown as ✅ when a PR template, any issue template and a CONTRIBUTING file exist.
 - Generates only what is missing: `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/bug_report.md`, `.github/ISSUE_TEMPLATE/feature_request.md`, `CONTRIBUTING.md` (same file handling as the other generated files). CODE_OF_CONDUCT is not generated: pick a text you endorse (for example the Contributor Covenant).
 - Undo: delete the files.
+
+### issues-enabled (report only)
+- `has_issues` from `GET /repos/{o}/{r}`: ⚠️ when Issues are off, because people then cannot report problems or ask questions (vulnerabilities go through `SECURITY.md`). Switch it back on in Settings -> General -> Features.
 
 ### security-policy (default)
 - `SECURITY.md` (root, `.github/` or `docs/`) present → ✅. Otherwise a template pointing at

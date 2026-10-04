@@ -22,6 +22,8 @@ on:
   pull_request:
   push:
     tags: ["v*"]
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,7 +38,7 @@ def base(name="voicebooth", private=False):
     return {
         "repo": {
             "full_name": "%s/%s" % (ME, name), "name": name, "owner": {"login": ME},
-            "private": private, "default_branch": "main", "description": None,
+            "private": private, "default_branch": "main", "description": None, "has_issues": True,
             "homepage": None, "topics": [], "license": None, "has_discussions": False,
             "delete_branch_on_merge": False,
             "permissions": {"admin": True, "push": True, "pull": True},
@@ -59,6 +61,7 @@ def base(name="voicebooth", private=False):
         "pages": None,
         "releases": [],
         "uses_custom_og": False,
+        "runs": [],
         "labels": ["bug", "enhancement", "documentation"],
         "free_private": private,
     }
@@ -129,6 +132,9 @@ def configured():
         ".github/workflows/ci.yml": CI_WORKFLOW,
     }
     s["alerts"] = True
+    s["alerts_open"] = []
+    s["runs"] = [{"workflow_id": 1, "name": "ci", "path": ".github/workflows/ci.yml", "conclusion": "success",
+                  "html_url": "https://github.com/seventhwell/tidy/actions/runs/1"}]
     s["security_fixes"] = {"enabled": True, "paused": False}
     s["pvr"] = True
     s["codeql"] = {"state": "configured", "languages": ["python"]}
