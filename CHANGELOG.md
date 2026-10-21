@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/kajisho5/github-solo-skill/compare/v0.3.0...v0.3.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **skill:** shorten SKILL.md description to fit the 1024-char limit ([b62d630](https://github.com/kajisho5/github-solo-skill/commit/b62d630e229b4644acd8aff3b383633569a7b906))
+
 ## [0.3.0](https://github.com/kajisho5/github-solo-skill/compare/v0.2.0...v0.3.0) (2026-10-04)
 
 
